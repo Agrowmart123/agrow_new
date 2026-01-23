@@ -112,13 +112,11 @@ import java.util.Date;
 @Component
 public class JwtUtil {
 
-   @Value("${jwt.expiration-ms:86400000}")
-private long jwtExpirationMs;
+    @Value("${jwt.secret}")
+    private String secret;
 
-
-   @Value("${jwt.secret:default-dev-secret-change-this}")
-private String jwtSecret;
-
+    @Value("${jwt.expiration-ms}")
+    private long expirationMs;
 
     private SecretKey getSigningKey() {
         return Keys.hmacShaKeyFor(secret.getBytes());
