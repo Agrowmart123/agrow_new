@@ -15,7 +15,7 @@
 ##################################
 
 # Firebase / Cloud / Keys
-**/serviceAccountKey.json
+
 
 # Spring credentials (contains real secrets)
 **/application.properties
