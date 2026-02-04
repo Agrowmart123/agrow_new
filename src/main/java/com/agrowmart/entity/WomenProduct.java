@@ -270,19 +270,19 @@ public class WomenProduct {
 	    public void setStatus(ProductStatus status) {
 	        this.status = status;
 	    }
-	 // Restore 
+	
 	    
-	    @Column(name = "is_deleted")
-	    private Boolean deleted = false;
+	    @Column(columnDefinition = "TEXT")
+	    private String rejectionReason;
 
-	    public Boolean getDeleted() {
-	        return deleted;
+	    // Getter & Setter
+	    public String getRejectionReason() {
+	        return rejectionReason;
 	    }
 
-	    public void setDeleted(Boolean deleted) {
-	        this.deleted = deleted;
+	    public void setRejectionReason(String rejectionReason) {
+	        this.rejectionReason = rejectionReason;
 	    }
-	    
 }
 
 	    

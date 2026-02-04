@@ -51,13 +51,17 @@ public record MeResponse(
         String shopPhoto,
         String shopCoverPhoto,
         String shopLicensePhoto,
-        String workingHours,
+     // Changed
+        String workingHoursJson,     // ← instead of String workingHours        
+        
+        
         String shopDescription,
         String shopLicense,
         LocalTime opensAt,
         LocalTime closesAt,
-        boolean isApproved,
-        boolean isActive,
+        
+        Boolean isApproved,     // ← change to Boolean (capital B)
+        Boolean isActive,       // ← change to Boolean
         
         
         String createdAt,

@@ -47,108 +47,7 @@ public class AuthController {
         return ResponseEntity.ok(authService.register(req));
     }
     
-    // ──────────────────────────────────────────────
-    // 2. Complete Profile (multipart form)
-    // ──────────────────────────────────────────────
-//    @PutMapping(value = "/complete-profile", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-//    public ResponseEntity<User> completeProfile(
-//            @RequestPart(value = "businessName", required = false) String businessName,
-//            @RequestPart(value = "address", required = false) String address,
-//            @RequestPart(value = "city", required = false) String city,
-//            @RequestPart(value = "state", required = false) String state,
-//            @RequestPart(value = "country", required = false) String country,
-//            @RequestPart(value = "postalCode", required = false) String postalCode,
-//            @RequestPart(value = "aadhaarNumber", required = false) String aadhaarNumber,
-//            @RequestPart(value = "panNumber", required = false) String panNumber,
-//            @RequestPart(value = "udyamRegistrationNumber", required = false) String udyamRegistrationNumber,
-//            @RequestPart(value = "gstCertificateNumber", required = false) String gstCertificateNumber,
-//            @RequestPart(value = "tradeLicenseNumber", required = false) String tradeLicenseNumber,
-//            @RequestPart(value = "fssaiLicenseNumber", required = false) String fssaiLicenseNumber,
-//            @RequestPart(value = "bankName", required = false) String bankName,
-//            @RequestPart(value = "accountHolderName", required = false) String accountHolderName,
-//            @RequestPart(value = "bankAccountNumber", required = false) String bankAccountNumber,
-//            @RequestPart(value = "ifscCode", required = false) String ifscCode,
-//            @RequestPart(value = "upiId", required = false) String upiId,
-//            // Files
-//            @RequestPart(value = "fssaiLicenseFile", required = false) MultipartFile fssaiLicenseFile,
-//            @RequestPart(value = "photo", required = false) MultipartFile photo,
-//            @RequestPart(value = "aadhaarImage", required = false) MultipartFile aadhaarImage,
-//            @RequestPart(value = "panImage", required = false) MultipartFile panImage,
-//            @RequestPart(value = "udyamRegistrationImage", required = false) MultipartFile udyamRegistrationImage,
-//        
-//            
-//            
-//         // ── NEW shop fields (all optional)
-//            @RequestPart(value = "shopName", required = false) String shopName,
-//            @RequestPart(value = "shopType", required = false) String shopType,
-//            @RequestPart(value = "shopAddress", required = false) String shopAddress,
-//            @RequestPart(value = "workingHours", required = false) String workingHours,
-//            @RequestPart(value = "shopDescription", required = false) String shopDescription,
-//            @RequestPart(value = "shopLicense", required = false) String shopLicense,
-//            @RequestPart(value = "shopPhoto", required = false) MultipartFile shopPhoto,
-//            @RequestPart(value = "shopCoverPhoto", required = false) MultipartFile shopCoverPhoto,
-//            @RequestPart(value = "shopLicensePhoto", required = false) MultipartFile shopLicensePhoto,
-//            @RequestPart(value = "opensAt", required = false) String opensAt,
-//            @RequestPart(value = "closesAt", required = false) String closesAt,
-//            
-//            
-//            
-//            @AuthenticationPrincipal User currentUser) {
-//
-//        if (currentUser == null) {
-//            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-//        }
-//
-//        CompleteProfileRequest req = new CompleteProfileRequest(
-//                businessName, address, city, state, country, postalCode,
-//                aadhaarNumber, panNumber, udyamRegistrationNumber,
-//                gstCertificateNumber, tradeLicenseNumber, fssaiLicenseNumber,
-//                bankName, accountHolderName, bankAccountNumber, ifscCode, upiId,
-//                fssaiLicenseFile, photo, aadhaarImage, panImage, udyamRegistrationImage,
-//                
-//             // shop fields
-//                shopName, shopType, shopAddress, workingHours, shopDescription,
-//                shopLicense, shopPhoto, shopCoverPhoto, shopLicensePhoto,
-//                opensAt, closesAt
-//        );
-//
-//        User updated = authService.completeProfile(req, currentUser);
-//        
-//     // ── Handle shop creation / update if any shop field was sent ─────
-//        boolean hasShopData = shopName != null || shopType != null || shopAddress != null ||
-//                              workingHours != null || shopLicense != null ||
-//                              shopPhoto != null || shopCoverPhoto != null || shopLicensePhoto != null ||
-//                              opensAt != null || closesAt != null;
-//
-//        if (hasShopData) {
-//            LocalTime openTime  = opensAt  != null ? LocalTime.parse(opensAt)  : null;
-//            LocalTime closeTime = closesAt != null ? LocalTime.parse(closesAt) : null;
-//
-//            ShopRequest shopReq = new ShopRequest(
-//                shopName,
-//                shopType,
-//                shopAddress,
-//                workingHours,
-//                shopDescription != null ? shopDescription : "",
-//                shopLicense,
-//                openTime,
-//                closeTime,
-//                shopPhoto,
-//                shopCoverPhoto,
-//                shopLicensePhoto
-//            );
-//
-//            shopService.createOrUpdateShop(shopReq, updatedUser);
-//        }
-//
-//        return ResponseEntity.ok(updatedUser);
-//        
-//        
-//        
-//        return ResponseEntity.ok(updated);
-//    }
 
-    
     
     @PutMapping(value = "/complete-profile", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<User> completeProfile(
@@ -182,7 +81,10 @@ public class AuthController {
             @RequestPart(value = "shopName", required = false) String shopName,
             @RequestPart(value = "shopType", required = false) String shopType,
             @RequestPart(value = "shopAddress", required = false) String shopAddress,
-            @RequestPart(value = "workingHours", required = false) String workingHours,
+         // ← YE NAYA ADD KAR
+            @RequestPart(value = "workingHoursJson", required = false) String workingHoursJson,
+            
+            
             @RequestPart(value = "shopDescription", required = false) String shopDescription,
             @RequestPart(value = "shopLicense", required = false) String shopLicense,
             @RequestPart(value = "shopPhoto", required = false) MultipartFile shopPhoto,
@@ -206,7 +108,7 @@ public class AuthController {
                 fssaiLicenseFile, photo, aadhaarImage, panImage, udyamRegistrationImage,
 
                 // Shop fields passed to record
-                shopName, shopType, shopAddress, workingHours, shopDescription,
+                shopName, shopType, shopAddress, workingHoursJson, shopDescription,
                 shopLicense, shopPhoto, shopCoverPhoto, shopLicensePhoto,
                 opensAt, closesAt
         );
@@ -216,7 +118,7 @@ public class AuthController {
 
         // ── Optional: Create or update shop if any shop-related field was provided ──
         boolean hasShopData = shopName != null || shopType != null || shopAddress != null ||
-                              workingHours != null || shopLicense != null ||
+        		workingHoursJson != null || shopLicense != null ||
                               shopPhoto != null || shopCoverPhoto != null || shopLicensePhoto != null ||
                               opensAt != null || closesAt != null;
 
@@ -228,7 +130,7 @@ public class AuthController {
                     shopName,
                     shopType,
                     shopAddress,
-                    workingHours,
+                    workingHoursJson,
                     shopDescription != null ? shopDescription.trim() : "",
                     shopLicense,
                     openTime,
@@ -440,13 +342,14 @@ public class AuthController {
                 shop != null ? shop.getShopPhoto()        : null,
                 shop != null ? shop.getShopCoverPhoto()   : null,
                 shop != null ? shop.getShopLicensePhoto() : null,
-                shop != null ? shop.getWorkingHours()     : null,
+                		// Changed
+                 shop != null ? shop.getWorkingHoursJson() : null,   // ← fix here
                 shop != null ? shop.getShopDescription()  : null,
                 shop != null ? shop.getShopLicense()      : null,
                 shop != null ? shop.getOpensAt()          : null,
                 shop != null ? shop.getClosesAt()         : null,
-                shop != null ? shop.isApproved()          : null,
-                shop != null ? shop.isActive()            : null,
+                		shop != null ? shop.isApproved() : false,    // or true — your business rule
+                				shop != null ? shop.isActive()   : false,
 
                 user.getCreatedAt() != null ? user.getCreatedAt().toString() : null,
                 user.getUpdatedAt() != null ? user.getUpdatedAt().toString() : null
@@ -495,4 +398,71 @@ public class AuthController {
         authService.save(user);
         return ResponseEntity.ok(user.getOnlineStatus());
     }
+    
+    
+   
+    
+    
+ // In AuthController    
+    @DeleteMapping("/profile/delete")
+    @PreAuthorize("hasRole('VENDOR')")   // only the vendor themselves can delete their own profile
+    public ResponseEntity<String> softDeleteMyProfile(
+            @AuthenticationPrincipal User currentUser) {
+
+        if (currentUser == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body("You must be logged in to perform this action");
+        }
+
+        try {
+            // Call the service method we prepared earlier
+            authService.softDeleteVendor(currentUser, currentUser);  // self-deletion
+
+            return ResponseEntity.ok(
+                "Your profile has been deactivated.\n" +
+                "All your products are now set to INACTIVE.\n" +
+                "Permanent deletion of your account will happen automatically after 7 days."
+            );
+
+        } catch (IllegalStateException e) {
+            // Already deleted
+            return ResponseEntity.status(HttpStatus.GONE)
+                    .body("Your profile is already deleted.");
+        } catch (Exception e) {
+            // Log the error if you have logging
+            System.err.println("Error during profile deletion: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("An error occurred. Please contact support.");
+        }
+    }
+        @PostMapping("/profile/restore")
+        @PreAuthorize("hasRole('VENDOR')")
+        public ResponseEntity<String> selfRestoreProfile(
+                @AuthenticationPrincipal User currentUser) {
+
+            if (currentUser == null) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            }
+
+            if (!currentUser.isDeleted()) {
+                return ResponseEntity.badRequest().body("Your account is not deleted");
+            }
+
+            try {
+                authService.restoreVendor(currentUser);
+                return ResponseEntity.ok(
+                    "Your account has been successfully restored.\n" +
+                    "Your products are now ACTIVE again."
+                );
+            } catch (Exception e) {
+                System.err.println("Restore failed: " + e.getMessage());
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                        .body("Could not restore account at this time.");
+            }
+        
+    }
+
+    
+    
+    
 }

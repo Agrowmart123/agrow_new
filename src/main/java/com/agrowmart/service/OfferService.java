@@ -18,4 +18,8 @@ public interface OfferService {
     List<FreeGiftResponseDTO> getMyFreeGiftOffers(User vendor);
     FreeGiftResponseDTO updateFreeGiftOffer(User vendor, Long id, FreeGiftRequestDTO dto, MultipartFile image);
     void deactivateFreeGiftOffer(User vendor, Long id);
+    
+ // OfferService.java
+    OfferResponseDTO updateOfferStatus(User vendor, Long offerId, boolean active);
+    FreeGiftResponseDTO updateFreeGiftOfferStatus(User vendor, Long offerId, boolean active);
 }

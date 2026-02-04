@@ -7,6 +7,7 @@ import com.agrowmart.dto.auth.customer.CustomerRegisterRequest;
 import com.agrowmart.dto.auth.farmer.FarmerProfileRequest;
 import com.agrowmart.dto.auth.farmer.FarmerRegisterRequest;
 import com.agrowmart.entity.*;
+import com.agrowmart.entity.Product.ProductStatus;
 import com.agrowmart.enums.OtpPurpose;
 import com.agrowmart.enums.RoleName;
 import com.agrowmart.repository.*;
@@ -38,6 +39,7 @@ public class AuthService {
     private final FarmerProfileRepository farmerProfileRepo;
     private final Fast2SmsService fast2SmsService;  // NEW: Fast2SMS service
     private final RedisOtpStore redisOtpStore;
+    private final ProductRepository productRepo;
     @Value("${file.upload-dir}") private String localUploadDir;
     public AuthService(UserRepository userRepo,
                        RoleRepository roleRepo,
@@ -46,7 +48,9 @@ public class AuthService {
                        CloudinaryService cloudinaryService,
                        FarmerProfileRepository farmerProfileRepo,
                        Fast2SmsService fast2SmsService ,
-                       RedisOtpStore redisOtpStore) {
+                       RedisOtpStore redisOtpStore,
+                       ProductRepository productRepo
+                       ) {
         this.userRepo = userRepo;
         this.roleRepo = roleRepo;
         this.encoder = encoder;
@@ -55,6 +59,7 @@ public class AuthService {
         this.farmerProfileRepo = farmerProfileRepo;
         this.fast2SmsService = fast2SmsService;
         this.redisOtpStore = redisOtpStore;
+        this.productRepo = productRepo;
       
     }
     @PostConstruct
@@ -112,6 +117,8 @@ public class AuthService {
         return userRepo.save(user);
     }
    
+    
+    
    
    
     @Transactional
@@ -162,47 +169,47 @@ public class AuthService {
     }
    
   //-----------------------------------
-    @Transactional
-    public User completeProfile(UpdateProfileRequest r, User user) throws IOException {
-        if (r.businessName() != null) user.setBusinessName(r.businessName());
-        if (r.address() != null) user.setAddress(r.address());
-        if (r.city() != null) user.setCity(r.city());
-        if (r.state() != null) user.setState(r.state());
-        if (r.country() != null) user.setCountry(r.country());
-        if (r.postalCode() != null) user.setPostalCode(r.postalCode());
-        if (r.aadhaarNumber() != null) user.setAadhaarNumber(r.aadhaarNumber());
-        if (r.panNumber() != null) user.setPanNumber(r.panNumber());
-        
-        if (r.udyamRegistrationNumber() != null) user.setUdyamRegistrationNumber(r.udyamRegistrationNumber());
-        
-        
-        if (r.gstCertificateNumber() != null) user.setGstCertificateNumber(r.gstCertificateNumber());
-        if (r.tradeLicenseNumber() != null) user.setTradeLicenseNumber(r.tradeLicenseNumber());
-        if (r.fssaiLicenseNumber() != null) user.setFssaiLicenseNumber(r.fssaiLicenseNumber());
-        if (r.bankName() != null) user.setBankName(r.bankName());
-        if (r.accountHolderName() != null) user.setAccountHolderName(r.accountHolderName());
-        if (r.bankAccountNumber() != null) user.setBankAccountNumber(r.bankAccountNumber());
-        if (r.ifscCode() != null) user.setIfscCode(r.ifscCode());
-        if (r.upiId() != null) user.setUpiId(r.upiId());
-        // Upload files
-        if (r.aadhaarImage() != null && !r.aadhaarImage().isEmpty()) {
-            user.setAadhaarImagePath(cloudinaryService.upload(r.aadhaarImage()));
-        }
-        if (r.panImage() != null && !r.panImage().isEmpty()) {
-            user.setPanImagePath(cloudinaryService.upload(r.panImage()));
-        }
-        if (r.udyamRegistrationImage() != null && !r.udyamRegistrationImage().isEmpty()) {
-            user.setUdyamRegistrationImagePath(cloudinaryService.upload(r.udyamRegistrationImage()));
-        }
-        if (r.fssaiLicenseFile() != null && !r.fssaiLicenseFile().isEmpty()) {
-            user.setFssaiLicensePath(cloudinaryService.upload(r.fssaiLicenseFile()));
-        }
-        if (r.photo() != null && !r.photo().isEmpty()) {
-            user.setPhotoUrl(cloudinaryService.upload(r.photo()));
-        }
-        user.setProfileCompleted("YES");
-        return userRepo.save(user);
-    }
+//    @Transactional
+//    public User completeProfile(UpdateProfileRequest r, User user) throws IOException {
+//        if (r.businessName() != null) user.setBusinessName(r.businessName());
+//        if (r.address() != null) user.setAddress(r.address());
+//        if (r.city() != null) user.setCity(r.city());
+//        if (r.state() != null) user.setState(r.state());
+//        if (r.country() != null) user.setCountry(r.country());
+//        if (r.postalCode() != null) user.setPostalCode(r.postalCode());
+//        if (r.aadhaarNumber() != null) user.setAadhaarNumber(r.aadhaarNumber());
+//        if (r.panNumber() != null) user.setPanNumber(r.panNumber());
+//        
+//        if (r.udyamRegistrationNumber() != null) user.setUdyamRegistrationNumber(r.udyamRegistrationNumber());
+//        
+//        
+//        if (r.gstCertificateNumber() != null) user.setGstCertificateNumber(r.gstCertificateNumber());
+//        if (r.tradeLicenseNumber() != null) user.setTradeLicenseNumber(r.tradeLicenseNumber());
+//        if (r.fssaiLicenseNumber() != null) user.setFssaiLicenseNumber(r.fssaiLicenseNumber());
+//        if (r.bankName() != null) user.setBankName(r.bankName());
+//        if (r.accountHolderName() != null) user.setAccountHolderName(r.accountHolderName());
+//        if (r.bankAccountNumber() != null) user.setBankAccountNumber(r.bankAccountNumber());
+//        if (r.ifscCode() != null) user.setIfscCode(r.ifscCode());
+//        if (r.upiId() != null) user.setUpiId(r.upiId());
+//        // Upload files
+//        if (r.aadhaarImage() != null && !r.aadhaarImage().isEmpty()) {
+//            user.setAadhaarImagePath(cloudinaryService.upload(r.aadhaarImage()));
+//        }
+//        if (r.panImage() != null && !r.panImage().isEmpty()) {
+//            user.setPanImagePath(cloudinaryService.upload(r.panImage()));
+//        }
+//        if (r.udyamRegistrationImage() != null && !r.udyamRegistrationImage().isEmpty()) {
+//            user.setUdyamRegistrationImagePath(cloudinaryService.upload(r.udyamRegistrationImage()));
+//        }
+//        if (r.fssaiLicenseFile() != null && !r.fssaiLicenseFile().isEmpty()) {
+//            user.setFssaiLicensePath(cloudinaryService.upload(r.fssaiLicenseFile()));
+//        }
+//        if (r.photo() != null && !r.photo().isEmpty()) {
+//            user.setPhotoUrl(cloudinaryService.upload(r.photo()));
+//        }
+//        user.setProfileCompleted("YES");
+//        return userRepo.save(user);
+//    }
        
     /* ------------------------------------------------- SEND OTP ------------------------------------------------- */
 //    @Transactional
@@ -511,4 +518,92 @@ public class AuthService {
     public User save(User user) {
         return userRepo.save(user);
     }
+    
+    
+    
+ // In AuthService        @Transactional
+    public void softDeleteVendor(User vendor, User performedBy) {
+
+        if (vendor == null) {
+            throw new IllegalArgumentException("Vendor cannot be null");
+        }
+
+        if (vendor.isDeleted()) {
+            throw new IllegalStateException("Vendor is already deleted");
+        }
+
+        
+        vendor.markAsDeleted(performedBy);
+        userRepo.save(vendor);
+
+        
+        List<Product> products = productRepo.findByMerchantId(vendor.getId());
+
+        int inactivatedCount = 0;
+
+        for (Product product : products) {
+            
+            if (product.getStatus() == ProductStatus.ACTIVE) {
+                product.setStatus(ProductStatus.INACTIVE);
+                inactivatedCount++;
+            }
+
+            
+        }
+
+        if (!products.isEmpty()) {
+            productRepo.saveAll(products);
+        }
+
+        // Replaced log.info with System.out.println
+        System.out.println(
+            "Soft-deleted vendor id=" + vendor.getId() +
+            " (phone=" + vendor.getPhone() +
+            "), inactivated " + inactivatedCount + " products"
+        );
+
+       
+    }
+
+    
+    @Transactional
+    public void restoreVendor(User vendor) {
+
+        if (vendor == null) {
+            throw new IllegalArgumentException("Vendor cannot be null");
+        }
+
+        if (!vendor.isDeleted()) {
+            throw new IllegalStateException("Account is not deleted");
+        }
+
+       
+        vendor.restore();
+        userRepo.save(vendor);
+
+        
+        List<Product> products = productRepo.findByMerchantId(vendor.getId());
+
+        int reactivated = 0;
+        for (Product p : products) {
+            if (p.getStatus() == ProductStatus.INACTIVE) {
+                
+                p.setStatus(ProductStatus.ACTIVE);
+                reactivated++;
+            }
+        }
+
+        if (reactivated > 0) {
+            productRepo.saveAll(products);
+        }
+
+        
+        System.out.println(
+            "Restored vendor id=" + vendor.getId() +
+            ", reactivated " + reactivated + " products"
+        );
+    }
+
+    
+
 }

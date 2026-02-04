@@ -1,6 +1,8 @@
 package com.agrowmart.entity.AgriProduct;
 
 import jakarta.persistence.*;
+
+import com.agrowmart.entity.ApprovalStatus;
 import com.agrowmart.entity.User;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -193,5 +195,93 @@ public abstract class BaseAgriProduct {
 
     public void setVisibleToCustomers(boolean visible) {
         this.visibleToCustomers = visible;
+    }
+    
+    
+    
+    
+    
+
+
+ // NEW APPROVAL FIELDS
+    @Column(name = "approval_status", nullable = false)
+    @Enumerated(EnumType.STRING)
+    private ApprovalStatus approvalStatus = ApprovalStatus.PENDING;
+
+    @Column(name = "rejection_reason")
+    private String rejectionReason;
+
+    @Column(name = "rejected_by")
+    private Long rejectedBy;
+
+    @Column(name = "rejected_at")
+    private LocalDate rejectedAt;
+
+    @Column(name = "approved_by")
+    private Long approvedBy;
+
+    @Column(name = "approved_at")
+    private LocalDate approvedAt;
+    
+ public String getAgriimageUrl() {
+		return AgriimageUrl;
+	}
+	public void setAgriimageUrl(String agriimageUrl) {
+		AgriimageUrl = agriimageUrl;
+	}
+	public ApprovalStatus getApprovalStatus() {
+		return approvalStatus;
+	}
+	public void setApprovalStatus(ApprovalStatus approvalStatus) {
+		this.approvalStatus = approvalStatus;
+	}
+	public String getRejectionReason() {
+		return rejectionReason;
+	}
+	public void setRejectionReason(String rejectionReason) {
+		this.rejectionReason = rejectionReason;
+	}
+	public Long getRejectedBy() {
+		return rejectedBy;
+	}
+	public void setRejectedBy(Long rejectedBy) {
+		this.rejectedBy = rejectedBy;
+	}
+	public LocalDate getRejectedAt() {
+		return rejectedAt;
+	}
+	public void setRejectedAt(LocalDate rejectedAt) {
+		this.rejectedAt = rejectedAt;
+	}
+	public Long getApprovedBy() {
+		return approvedBy;
+	}
+	public void setApprovedBy(Long approvedBy) {
+		this.approvedBy = approvedBy;
+	}
+	public LocalDate getApprovedAt() {
+		return approvedAt;
+	}
+	public void setApprovedAt(LocalDate approvedAt) {
+		this.approvedAt = approvedAt;
+	}
+	public boolean isDeleted() {
+		return deleted;
+	}
+	public void setDeleted(boolean deleted) {
+		this.deleted = deleted;
+	}
+	public static ObjectMapper getMapper() {
+		return mapper;
+	}
+
+	// Soft delete (optional but recommended)
+    @Column(name = "is_deleted", nullable = false)
+    private boolean deleted = false;
+    
+    
+    
+    public enum ApprovalStatus {
+        PENDING, APPROVED, REJECTED
     }
 }

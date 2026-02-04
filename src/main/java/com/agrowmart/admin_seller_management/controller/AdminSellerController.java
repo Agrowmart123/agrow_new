@@ -6,6 +6,7 @@ import com.agrowmart.admin_seller_management.service.AdminSellerService;
 import com.agrowmart.admin_seller_management.service.AdminVerificationService;
 import com.agrowmart.admin_seller_management.enums.AccountStatus;
 import com.agrowmart.admin_seller_management.enums.RejectReason;
+import com.agrowmart.admin_seller_management.repository.AdminAuditLogRepository;
 
 import jakarta.validation.Valid;
 
@@ -20,12 +21,14 @@ public class AdminSellerController {
 
     private final AdminSellerService sellerService;
     private final AdminVerificationService verificationService;
+    private final AdminAuditLogRepository adminAuditLogRepository;
 
     public AdminSellerController(
             AdminSellerService sellerService,
-            AdminVerificationService verificationService) {
+            AdminVerificationService verificationService,AdminAuditLogRepository adminAuditLogRepository) {
         this.sellerService = sellerService;
         this.verificationService = verificationService;
+        this.adminAuditLogRepository=adminAuditLogRepository;
     }
 
     @GetMapping
@@ -136,4 +139,54 @@ public class AdminSellerController {
                 new ApiResponseDTO<>(true, "Vendor unblocked")
         );
     }
+    
+    @DeleteMapping("/{id}/delete")
+    public ResponseEntity<ApiResponseDTO<?>> adminDeleteVendor(
+            @PathVariable Long id) {
+
+        sellerService.adminSoftDeleteVendor(id);
+
+        return ResponseEntity.ok(
+                new ApiResponseDTO<>(true, "Vendor profile deactivated by admin")
+        );
+    }
+
+    @PostMapping("/{id}/restore")
+    public ResponseEntity<ApiResponseDTO<?>> adminRestoreVendor(
+            @PathVariable Long id) {
+
+        sellerService.adminRestoreVendor(id);
+
+        return ResponseEntity.ok(
+                new ApiResponseDTO<>(true, "Vendor profile restored successfully")
+        );
+    }
+
+    /**
+     * 🔁 Restore List Page
+     */
+    @GetMapping("/deleted")
+    public ResponseEntity<ApiResponseDTO<?>> getDeletedVendors(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+
+        return ResponseEntity.ok(
+                sellerService.getDeletedVendors(page, size)
+        );
+    }
+    
+    @GetMapping("/{id}/audit-logs")
+    public ResponseEntity<ApiResponseDTO<?>> getVendorAuditLogs(
+            @PathVariable Long id) {
+
+        return ResponseEntity.ok(
+                new ApiResponseDTO<>(
+                        true,
+                        "Audit logs fetched",
+                        adminAuditLogRepository.findByVendorIdOrderByCreatedAtDesc(id)
+                )
+        );
+    }
+
+
 }

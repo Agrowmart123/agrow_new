@@ -1,6 +1,7 @@
 package com.agrowmart.service;
 
 import com.agrowmart.dto.auth.product.*;
+import com.agrowmart.dto.auth.shop.ShopSummaryDTO;
 import com.agrowmart.entity.*;
 import com.agrowmart.entity.Product.ProductStatus;
 import com.agrowmart.exception.ForbiddenException;
@@ -24,9 +25,11 @@ public class ProductService {
 
     private final ProductRepository productRepo;
     private final CategoryRepository categoryRepo;
+    
     private final VegetableDetailRepository vegRepo;
     private final DairyDetailRepository dairyRepo;
     private final MeatDetailRepository meatRepo;
+    
     private final CloudinaryService cloudinary;
      private final ShopRepository shopRepo;
     private final   UserRepository userRepo;
@@ -119,24 +122,37 @@ this.userRepo=userRepo;
         product = productRepo.save(product); // ID generated
 
         Object details = createDetailsEntity(dto, product, type);
+     // 9️⃣ Seller → Shop
+        User seller = userRepo.findById(merchantId).orElse(null);
+        Shop shop = seller != null ? seller.getShop() : null;
 
+        ShopSummaryDTO shopDTO = (shop == null) ? null : new ShopSummaryDTO(
+                shop.getId(),
+                shop.getShopName(),
+                shop.getShopPhoto(),
+                shop.getShopAddress(),
+                shop.getShopType()
+        );
+
+        // 🔟 Final response
         return new ProductResponseDTO(
                 product.getId(),
                 product.getProductName(),
                 product.getShortDescription(),
                 product.getStatus().name(),
-                category.getId(),
-                category.getName(),
+                product.getCategory().getId(),
+                product.getCategory().getName(),
                 imageUrls,
                 merchantId,
                 type,
                 details,
-                product.getInStock() ? "Stock Available" : "Out of Stock",
-                product.getSerialNo()	
-              
+                product.getInStock() ? "In Stock" : "Out of Stock",
+                product.getSerialNo(),
+                shopDTO
         );
+    
+        
     }
-
    
  // ===================== UPDATE - FINAL & FULL =====================
     public ProductResponseDTO update(Long productId, ProductUpdateDTO dto, Long merchantId) throws Exception {
@@ -201,141 +217,10 @@ this.userRepo=userRepo;
         // 5. Fetch fresh updated details for response
         Object updatedDetails = fetchDetailsEntity(product.getId(), type);
 
+        return toResponseDto(product);}
         // 6. Build fresh response with updated data
-        return new ProductResponseDTO(
-                product.getId(),
-                product.getProductName(),
-                product.getShortDescription(),
-                product.getStatus().name(),
-                product.getCategory().getId(),
-                product.getCategory().getName(),
-                getImageList(product.getImagePaths()),
-                merchantId,
-                type,
-                updatedDetails,
-                product.getInStock() ? "Stock Available" : "Out of Stock",
-                product.getSerialNo()
-        );
-    }
+      
 
-//        // ================= BASIC PRODUCT FIELDS ==================
-//        Optional.ofNullable(dto.productName()).ifPresent(product::setProductName);
-//        Optional.ofNullable(dto.shortDescription()).ifPresent(product::setShortDescription);
-//
-//        if (dto.categoryId() != null) {
-//            Category category = categoryRepo.findById(dto.categoryId())
-//                    .orElseThrow(() -> new ResourceNotFoundException("Category not found"));
-//            product.setCategory(category);
-//        }
-//
-//
-//        // ================= PRODUCT IMAGES ==================
-////        List<String> currentImages = getImageList(product.getImagePaths());
-////
-////        if (dto.removeImageUrls() != null && !dto.removeImageUrls().isEmpty()) {
-////            dto.removeImageUrls().forEach(cloudinary::delete);
-////            currentImages.removeIf(dto.removeImageUrls()::contains);
-////        }
-////
-////        if (dto.images() != null && !dto.images().isEmpty()) {
-////            List<String> newUrls = uploadImages(dto.images());
-////            currentImages.addAll(newUrls);
-////        }
-////
-////        product.setImagePaths(String.join(",", currentImages));
-////        // Save product after all updates
-////        product = productRepo.save(product);
-//        
-//     // ================= IMAGES HANDLING (FIXED) =================
-////        // Convert to mutable list
-////        List<String> currentImages = new ArrayList<>(getImageList(product.getImagePaths()));
-////
-////        // Remove images safely
-////        if (dto.removeImageUrls() != null && !dto.removeImageUrls().isEmpty()) {
-////            List<String> urlsToRemove = dto.removeImageUrls().stream()
-////                    .filter(currentImages::contains)  // Only delete if actually exists
-////                    .toList();;
-////
-////            urlsToRemove.forEach(url -> {
-////                try {
-////                    cloudinary.delete(url);
-////                    System.out.println("Successfully deleted from Cloudinary: " + url);
-////                } catch (Exception e) {
-////                    System.err.println("Failed to delete from Cloudinary: " + url + " - " + e.getMessage());
-////                    // Don't fail the whole update if one image delete fails
-////                }
-////            });
-////
-////            currentImages.removeIf(urlsToRemove::contains);
-////        }
-////
-////        // Add new images
-////        if (dto.images() != null && !dto.images().isEmpty()) {
-////            List<String> newUrls = uploadImages(dto.images());
-////            currentImages.addAll(newUrls);
-////        }
-////
-////        product.setImagePaths(String.join(",", currentImages));
-////
-////        // Save product first
-////        product = productRepo.save(product);
-//
-//     // ================= IMAGE REPLACE LOGIC =================
-//        if (dto.images() != null && !dto.images().isEmpty()) {
-//
-//            // 1️⃣ Delete ALL old images from Cloudinary
-//            List<String> oldImages = getImageList(product.getImagePaths());
-//            for (String oldUrl : oldImages) {
-//                try {
-//                    cloudinary.delete(oldUrl);
-//                } catch (Exception e) {
-//                    System.err.println("Failed to delete old image: " + oldUrl);
-//                }
-//            }
-//
-//            // 2️⃣ Upload NEW images
-//            List<String> newImageUrls = uploadImages(dto.images());
-//
-//            // 3️⃣ Replace image paths (OLD ❌ NEW ✅)
-//            product.setImagePaths(String.join(",", newImageUrls));
-//        }
-//
-//        // Save product
-//        product = productRepo.save(product);
-//
-//        // ================= UPDATE DETAILS ENTITY ==================
-//     // After possibly changing category
-//        Category currentCategory = product.getCategory(); // fallback if not changed
-//        if (dto.categoryId() != null) {
-//            currentCategory = categoryRepo.findById(dto.categoryId())
-//                .orElseThrow(() -> new ResourceNotFoundException("Category not found"));
-//            product.setCategory(currentCategory);
-//        }
-//        String type = determineProductType(currentCategory);
-//        
-//        Object details = fetchDetailsEntity(product.getId(), type);
-//
-//        // ================= RETURN FINAL RESPONSE ==================
-//        return new ProductResponseDTO(
-//                product.getId(),
-//                product.getProductName(),
-//                product.getShortDescription(),
-//                product.getStatus().name(),
-//                product.getCategory().getId(),
-//                product.getCategory().getName(),
-////                currentImages,
-//                getImageList(product.getImagePaths()),
-//                merchantId,
-//                type,
-//                details,
-//                product.getInStock() ? "Stock Available" : "Out of Stock",
-//                product.getSerialNo()
-//             
-//        );
-//        
-//    }
-//    
-    
 
     
     
@@ -410,13 +295,6 @@ this.userRepo=userRepo;
         };
     }
 
-    private void deleteDetailsEntity(Long productId, String type) {
-        switch (type) {
-            case "VEGETABLE" -> vegRepo.findByProductId(productId).ifPresent(vegRepo::delete);
-            case "DAIRY"     -> dairyRepo.findByProductId(productId).ifPresent(dairyRepo::delete);
-            case "MEAT"      -> meatRepo.findByProductId(productId).ifPresent(meatRepo::delete);
-        }
-    }
 
     private List<String> uploadImages(List<MultipartFile> files) throws Exception {
         if (files == null || files.isEmpty()) return List.of();
@@ -438,16 +316,7 @@ this.userRepo=userRepo;
                 .toList();
     }
 
-//    private String determineProductType(String categoryName) {
-//        if (categoryName == null) return "GENERAL";
-//        String name = categoryName.toLowerCase();
-//
-//        if (name.contains("vegetable") || name.contains("fruit")) return "VEGETABLE";
-//        if (name.contains("dairy") || name.contains("milk")) return "DAIRY";
-//        if (name.contains("meat") || name.contains("chicken") || name.contains("fish") || name.contains("seafood")) return "MEAT";
-//        if (name.contains("women") || name.contains("handicraft")) return "WOMEN";
-//        return "GENERAL";
-//    }
+
     
     private String determineProductType(Category category) {
         if (category == null) return "GENERAL";
@@ -469,39 +338,7 @@ this.userRepo=userRepo;
         }
         return "GENERAL";
     }
-    //restore logic 
-    // ===================== DELETE =====================
-    public void delete(Long productId, Long merchantId) {
-        validateVendorCanModify(merchantId);
-
-        Product product = productRepo.findById(productId)
-                .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
-
-        if (!product.getMerchantId().equals(merchantId)) {
-            throw new ForbiddenException("You can only delete your own products");
-        }
-
-        // 🔴 DO NOT DELETE FROM DB
-        product.setDeleted(true);
-        product.setStatus(ProductStatus.INACTIVE);
-        product.setInStock(false);
-
-        productRepo.save(product);
-
-        // 🔁 SERIAL NO REORDER (ACTIVE + NOT DELETED ONLY)
-        List<Product> remainingProducts =
-                productRepo.findByMerchantIdAndStatusAndDeletedFalseOrderBySerialNoAsc(
-                        merchantId,
-                        ProductStatus.ACTIVE
-                );
-
-        long serial = 1;
-        for (Product p : remainingProducts) {
-            p.setSerialNo(serial++);
-        }
-        productRepo.saveAll(remainingProducts);
-    }
-
+  
 
     // ===================== SEARCH =====================
  
@@ -532,16 +369,23 @@ this.userRepo=userRepo;
         return productPage.map(product -> toResponseDto(product));
     }
 
-    // ===================== DTO MAPPER =====================
- // ===================== DTO MAPPER =====================
+ // ===================== MAPPER (🔥 SINGLE SOURCE OF TRUTH 🔥) =====================
     public ProductResponseDTO toResponseDto(Product p) {
+
         List<String> images = getImageList(p.getImagePaths());
         String type = determineProductType(p.getCategory());
         Object details = fetchDetailsEntity(p.getId(), type);
 
-        String stockStatus = p.getInStock()
-                ? "Stock Available"
-                : "Out of Stock";
+        User seller = userRepo.findById(p.getMerchantId()).orElse(null);
+        Shop shop = seller != null ? seller.getShop() : null;
+
+        ShopSummaryDTO shopDTO = shop == null ? null : new ShopSummaryDTO(
+                shop.getId(),
+                shop.getShopName(),
+                shop.getShopPhoto(),
+                shop.getShopAddress(),
+                shop.getShopType()
+        );
 
         return new ProductResponseDTO(
                 p.getId(),
@@ -554,23 +398,15 @@ this.userRepo=userRepo;
                 p.getMerchantId(),
                 type,
                 details,
-                stockStatus,
-                p.getSerialNo()
+                p.getInStock() ? "In Stock" : "Out of Stock",
+                p.getSerialNo(),
+                shopDTO
         );
     }
-    
-    
-    // restore
-    // ===================== VENDOR PRODUCTS =====================
-//    public List<ProductResponseDTO> getVendorProducts(Long merchantId) {
-//        return productRepo.findByMerchantId(merchantId)
-//        		.stream()
-//                .map(this::toResponseDto)
-//                .toList();
-//    }
+
     
     public List<ProductResponseDTO> getVendorProducts(Long merchantId) {
-        return productRepo.findByMerchantIdAndDeletedFalse(merchantId)
+        return productRepo.findByMerchantId(merchantId)
                 .stream()
                 .map(this::toResponseDto)
                 .toList();
@@ -643,43 +479,7 @@ this.userRepo=userRepo;
         };
     }
     
- // ===================== VENDOR PRODUCTS (PAGINATED) =====================
-//    public VendorProductPaginatedResponse getVendorProductsPaginated(
-//            Long merchantId,
-//            int page,
-//            int size
-//    ) {
-//
-//        Pageable pageable = PageRequest.of(
-//                page,
-//                size,
-//                Sort.by("serialNo").ascending()
-//        );
-//
-//        Page<Product> productPage =
-//                productRepo.findByMerchantIdAndStatus(
-//                        merchantId,
-//                        Product.ProductStatus.ACTIVE,
-//                        pageable
-//                );
-//
-//        List<ProductResponseDTO> products = productPage.getContent()
-//                .stream()
-//                .map(this::toResponseDto)
-//                .toList();
-//
-//        return new VendorProductPaginatedResponse(
-//                products,
-//                productPage.getNumber(),
-//                productPage.getTotalPages(),
-//                productPage.getTotalElements(),
-//                productPage.getSize()
-//        );
-//    }
-    
-    //Added by vishal -22-01-2026
- // src/main/java/com/agrowmart/service/ProductService.java
-    // Change getVendorProductsPaginated to fetch ALL statuses
+
     public VendorProductPaginatedResponse getVendorProductsPaginated(Long merchantId, int page, int size, String status) {
         Pageable pageable = PageRequest.of(page, size, Sort.by("serialNo").ascending());
         Page<Product> productPage = productRepo.findByMerchantId(merchantId, pageable);  // Changed - no status filter
@@ -695,19 +495,9 @@ this.userRepo=userRepo;
 
     
 
-    // ADD THIS AT THE END OF YOUR ProductService.java (before the last closing })
-
-//    public List<ProductResponseDTO> getAllActiveProducts() {
-//        return productRepo.findByStatus(Product.ProductStatus.ACTIVE)
-//                .stream()
-//                .map(this::toResponseDto)
-//                .toList();
-//    }
-    
-    //21 Jan 
     public List<ProductResponseDTO> getAllActiveProducts() {
         return productRepo
-                .findByStatusAndApprovalStatusAndDeletedFalse(
+                .findByStatusAndApprovalStatus(
                         Product.ProductStatus.ACTIVE,
                         ApprovalStatus.APPROVED
                 )
@@ -768,25 +558,7 @@ this.userRepo=userRepo;
             default -> BigDecimal.ZERO;
         };
     }
-    
-    // 21 Jan
-    
-    public List<ProductResponseDTO> getPublicProducts() {
-        return productRepo.findAllActiveFromOnlineVendors()
-                .stream()
-                .map(this::toResponseDto)
-                .toList();
-    }
 
-//    public List<ProductResponseDTO> getRecentlyAddedPublicProducts(int limit) {
-//        return productRepo.findPublicProducts()
-//                .stream()
-//                .limit(limit)
-//                .map(this::toResponseDto)
-//                .toList();
-//    }
-    
-    // 21 Jan 
     
     public ProductResponseDTO getPublicProductById(Long productId) throws Exception {
         Product product = productRepo.findApprovedProductById(productId)
@@ -808,57 +580,10 @@ this.userRepo=userRepo;
     }
 
     
-    
- //------------------
- // ===================== SHOP PRODUCTS (PUBLIC) =====================
-//    public List<ProductResponseDTO> getProductsByShop(Long shopId) {
-//
-//        // 1️⃣ Shop fetch
-//        Shop shop = shopRepo.findById(shopId)
-//                .orElseThrow(() -> new ResourceNotFoundException("Shop not found"));
-//
-//        // 2️⃣ merchantId from shop → user
-//        Long merchantId = shop.getUser().getId();
-//
-//        // 3️⃣ ACTIVE products of that merchant
-//        List<Product> products =
-//                productRepo.findByMerchantIdAndStatus(
-//                        merchantId,
-//                        Product.ProductStatus.ACTIVE
-//                );
-//
-//        // 4️⃣ reuse existing mapper
-//        return products.stream()
-//                .map(this::toResponseDto)
-//                .toList();
-//    }
 
-    
-    
-    
- //---------------
-    
- // Add to ProductService
- // Add to ProductService
-
-
-//    public List<ProductResponseDTO> getRecentlyAddedProducts(int limit) {
-//        return productRepo.findByStatusOrderByCreatedAtDesc(Product.ProductStatus.ACTIVE)
-//            .stream()
-//            .limit(limit)
-//            .map(this::toResponseDto)
-//            .toList();
-//    }
-//    
-    
-   
-
-    
-    // 21 Jan 
-    // ✅ Shop wise products (PUBLIC)
     public List<ProductResponseDTO> getProductsByShop(Long shopUserId) {
         return productRepo
-                .findByMerchantIdAndStatusAndApprovalStatusAndDeletedFalse(
+                .findByMerchantIdAndStatusAndApprovalStatus(
                         shopUserId,
                         ProductStatus.ACTIVE,
                         ApprovalStatus.APPROVED
@@ -932,5 +657,71 @@ this.userRepo=userRepo;
         return toResponseDto(product); // ⭐ THIS FIXES EVERYTHING
     }
     
+    @Transactional
+    public void delete(Long productId, Long merchantId) {
+        validateVendorCanModify(merchantId);
+
+        Product product = productRepo.findById(productId)
+            .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
+
+        if (!product.getMerchantId().equals(merchantId)) {
+            throw new ForbiddenException("You can only delete your own products");
+        }
+
+        // Critical protection – vendors cannot delete approved products
+        if (product.getApprovalStatus() == ApprovalStatus.APPROVED) {
+            throw new ForbiddenException(
+                "Approved products cannot be deleted by vendors. " +
+                "Only admin can permanently remove approved/live products. " +
+                "Contact support if needed."
+            );
+        }
+
+        // Step 1: Determine product type (VEGETABLE / DAIRY / MEAT)
+        String type = determineProductType(product.getCategory());
+
+        // Step 2: Delete the child detail record first (this fixes the FK error)
+        deleteDetailsEntity(productId, type);
+
+        // Step 3: Clean Cloudinary images
+        if (product.getImagePaths() != null && !product.getImagePaths().isBlank()) {
+            Arrays.stream(product.getImagePaths().split(","))
+                  .filter(url -> url != null && !url.trim().isEmpty())
+                  .map(this::extractPublicId)
+                  .forEach(publicId -> {
+                      try {
+                          cloudinary.delete(publicId);
+                      } catch (Exception e) {
+                          System.err.println("Failed to delete image " + publicId);
+                      }
+                  });
+        }
+
+        // Step 4: HARD DELETE the product itself
+        productRepo.delete(product);
+
+        System.out.println("Vendor " + merchantId + " HARD-DELETED pending product ID: " + productId);
+
+        // Optional: reorder serial numbers if needed
+        // reorderVendorProductsSerialNumbers(merchantId);
+    }
     
+    private String extractPublicId(String url) {
+        if (url == null || url.isEmpty()) return null;
+        try {
+            String noExt = url.substring(0, url.lastIndexOf('.'));
+            return noExt.substring(noExt.lastIndexOf('/') + 1);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+    
+    private void deleteDetailsEntity(Long productId, String type) {
+        switch (type) {
+            case "VEGETABLE" -> vegRepo.findByProductId(productId).ifPresent(vegRepo::delete);
+            case "DAIRY" -> dairyRepo.findByProductId(productId).ifPresent(dairyRepo::delete);
+            case "MEAT" -> meatRepo.findByProductId(productId).ifPresent(meatRepo::delete);
+        }
+        
+    }
 }

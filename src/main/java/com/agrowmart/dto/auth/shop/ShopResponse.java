@@ -2,6 +2,9 @@ package com.agrowmart.dto.auth.shop;
 
 
 import java.time.LocalTime;
+import java.util.Map;
+
+import com.agrowmart.entity.Shop.DayHours;
 
 public record ShopResponse(
  Long shopId,
@@ -11,7 +14,10 @@ public record ShopResponse(
  String shopPhoto,
  String shopCoverPhoto,
  String shopLicensePhoto,
- String workingHours,
+ 
+//Changed: return the JSON string directly
+ String workingHoursJson,     // ← this is what frontend will receive
+ 
  String shopDescription,
  String shopLicense,
  boolean isApproved,

@@ -42,7 +42,11 @@ public record CompleteProfileRequest(
  @RequestPart(required = false) String shopName,
  @RequestPart(required = false) String shopType,
  @RequestPart(required = false) String shopAddress,
- @RequestPart(required = false) String workingHours,
+
+ 
+//New
+ @RequestPart(required = false) String workingHoursJson,
+ 
  @RequestPart(required = false) String shopDescription,
  @RequestPart(required = false) String shopLicense,
  @RequestPart(required = false) MultipartFile shopPhoto,

@@ -10,7 +10,8 @@ public record ShopRequest(
  String shopName,
  String shopType,
  String shopAddress,
- String workingHours,
+//New
+ String workingHoursJson,       // ← send JSON string from frontend
  String shopDescription,
  String shopLicense,
  

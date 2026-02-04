@@ -61,6 +61,7 @@ package com.agrowmart.controller;
 
 import com.agrowmart.dto.auth.offer.OfferRequestDTO;
 import com.agrowmart.dto.auth.offer.OfferResponseDTO;
+import com.agrowmart.dto.auth.offer.OfferStatusUpdateDTO;
 import com.agrowmart.entity.User;
 import com.agrowmart.service.OfferService;
 import org.springframework.http.HttpStatus;
@@ -101,11 +102,27 @@ public class VendorOfferController {
         return ResponseEntity.ok(offerService.updateOffer(vendor, id, dto));
     }
 
+ // VendorOfferController
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(
             @AuthenticationPrincipal User vendor,
             @PathVariable Long id) {
-        offerService.deactivate(vendor, id);
+        offerService.deactivate(vendor, id);           // now this deletes permanently
         return ResponseEntity.noContent().build();
     }
+ // In VendorOfferController.java  (for normal / promo code offers)
+
+    @PatchMapping("/{id}/status")
+    public ResponseEntity<OfferResponseDTO> updateOfferStatus(
+            @AuthenticationPrincipal User vendor,
+            @PathVariable Long id,
+            @RequestBody OfferStatusUpdateDTO dto) {
+
+        if (dto.active() == null) {
+            throw new IllegalArgumentException("Field 'active' is required (true/false)");
+        }
+
+        OfferResponseDTO updated = offerService.updateOfferStatus(vendor, id, dto.active());
+        return ResponseEntity.ok(updated);
+    }  
 }

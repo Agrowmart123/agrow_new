@@ -4,6 +4,7 @@ import com.agrowmart.dto.auth.offer.*;
 import com.agrowmart.entity.User;
 import com.agrowmart.entity.order.Offer;
 import com.agrowmart.entity.order.OfferPrice;
+import com.agrowmart.exception.ForbiddenException;
 import com.agrowmart.exception.ResourceNotFoundException;
 import com.agrowmart.repository.OfferRepository;
 import org.springframework.stereotype.Service;
@@ -61,14 +62,6 @@ public class OfferServiceImpl implements OfferService {
 
         offer = offerRepository.save(offer);
         return mapOfferResponse(offer);
-    }
-
-    @Override
-    @Transactional
-    public void deactivate(User vendor, Long id) {
-        Offer offer = getVendorOffer(vendor, id);
-        offer.setActive(false);
-        offerRepository.save(offer);
     }
 
     // =====================================================
@@ -175,14 +168,7 @@ public class OfferServiceImpl implements OfferService {
 
         return mapFreeGiftResponse(offer);
     }
-    
-    @Override
-    @Transactional
-    public void deactivateFreeGiftOffer(User vendor, Long id) {
-        Offer offer = getVendorGiftOffer(vendor, id);
-        offer.setActive(false);
-        offerRepository.save(offer);
-    }
+
 
     // =====================================================
     // HELPERS
@@ -285,4 +271,104 @@ public class OfferServiceImpl implements OfferService {
             }
         }
     }
+    
+    
+    
+    
+ // OfferServiceImpl.java
+
+    @Override
+    @Transactional
+    public void deactivate(User vendor, Long id) {
+        Offer offer = offerRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Offer not found with id: " + id));
+
+        // 1. Ownership check (very important!)
+        if (!offer.getMerchant().getId().equals(vendor.getId())) {
+            throw new ForbiddenException("You can only delete your own offers");
+        }
+
+        // 2. Optional: Prevent deleting active offers (recommended)
+        if (offer.isActive()) {
+            throw new IllegalStateException("Cannot delete an active offer. Deactivate it first.");
+        }
+
+        // 3. Optional but strongly recommended: Prevent deleting used offers
+        //     (add this query to OfferUsageRepository if not present)
+        // boolean wasUsed = offerUsageRepository.existsByOffer(offer);
+        // if (wasUsed) {
+        //     throw new IllegalStateException("Cannot delete offer that was already used by customers");
+        // }
+
+        // 4. Real delete from database
+        offerRepository.delete(offer);
+
+        // Optional: log it
+        // log.info("Offer {} permanently deleted by vendor {}", id, vendor.getId());
+    }
+
+    @Override
+    @Transactional
+    public void deactivateFreeGiftOffer(User vendor, Long id) {
+        Offer offer = offerRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Free gift offer not found with id: " + id));
+
+        if (!offer.getMerchant().getId().equals(vendor.getId())) {
+            throw new ForbiddenException("Not authorized to delete this free gift offer");
+        }
+
+        if (!offer.isFreeGiftOffer()) {
+            throw new IllegalStateException("This is not a free gift type offer");
+        }
+
+        if (offer.isActive()) {
+            throw new IllegalStateException("Cannot delete active free gift offer. Deactivate first.");
+        }
+
+        offerRepository.delete(offer);
+    }
+//------------   
+    
+    
+ // OfferServiceImpl.java
+
+    @Override
+    @Transactional
+    public OfferResponseDTO updateOfferStatus(User vendor, Long offerId, boolean active) {
+        Offer offer = offerRepository.findById(offerId)
+                .orElseThrow(() -> new ResourceNotFoundException("Offer not found"));
+
+        if (!offer.getMerchant().getId().equals(vendor.getId())) {
+            throw new ForbiddenException("You can only update your own offers");
+        }
+
+        if (offer.isFreeGiftOffer()) {
+            throw new IllegalStateException("Use free-gift endpoint for free gift offers");
+        }
+
+        offer.setActive(active);
+        offer = offerRepository.save(offer);
+
+        return mapOfferResponse(offer);   // your existing mapper
+    }
+
+    @Override
+    @Transactional
+    public FreeGiftResponseDTO updateFreeGiftOfferStatus(User vendor, Long offerId, boolean active) {
+        Offer offer = offerRepository.findById(offerId)
+                .orElseThrow(() -> new ResourceNotFoundException("Free gift offer not found"));
+
+        if (!offer.getMerchant().getId().equals(vendor.getId())) {
+            throw new ForbiddenException("Not your offer");
+        }
+
+        if (!offer.isFreeGiftOffer()) {
+            throw new IllegalStateException("This is not a free gift offer");
+        }
+
+        offer.setActive(active);
+        offer = offerRepository.save(offer);
+
+        return mapFreeGiftResponse(offer);   // your mapper
+    }  
 }

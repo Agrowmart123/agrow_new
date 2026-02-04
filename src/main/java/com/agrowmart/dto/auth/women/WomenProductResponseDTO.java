@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import com.agrowmart.dto.auth.shop.ShopSummaryDTO;
 import com.agrowmart.entity.ApprovalStatus;
 
 public record WomenProductResponseDTO(
@@ -24,8 +25,11 @@ public record WomenProductResponseDTO(
         Boolean isAvailable,
         LocalDateTime createdAt,
      // ============ NEW FIELDS ============
+        
         String ingredients,
         String shelfLife,
         String packagingType,
-        String productInfo
+        String productInfo,
+        
+        ShopSummaryDTO shop 
 ) {}

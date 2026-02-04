@@ -38,6 +38,8 @@ public record AgriProductCreateDTO(
     String AgrimanufacturerName,
     LocalDate AgrimanufacturingDate,
     LocalDate AgriexpiryDate,
+    
+    
 
     // Specific fields
     String fertilizerType,

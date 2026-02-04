@@ -280,4 +280,15 @@ public class CloudinaryService {
 
         return null;
     }
+    
+    
+    
+ // add this code in cloudinaryservice.java      
+    public void deleteByUrl(String url) throws Exception {
+    if (url == null || !url.contains("res.cloudinary.com")) return;
+    
+    // Extract public_id from URL (example logic - adjust to your format)
+    String publicId = url.substring(url.lastIndexOf("/") + 1, url.lastIndexOf("."));
+    cloudinary.uploader().destroy(publicId, ObjectUtils.emptyMap());
+}
 }

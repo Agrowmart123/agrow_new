@@ -350,7 +350,7 @@ public class PublicProductController {
     	
     // 21 Jan
     	
-    	List<ProductResponseDTO> regular = productService.getPublicProducts();
+    	List<ProductResponseDTO> regular = productService.getAllActiveProducts();
 // 
      // FIXED: Use active-only method
         List<WomenProductResponseDTO> women = womenProductService.getAllActiveWomenProducts();

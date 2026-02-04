@@ -913,7 +913,7 @@ public class OrderServiceImpl implements OrderService {
             //restore 
             Product normalProduct =
             	    productRepository
-            	        .findByIdAndMerchantIdAndStatusAndApprovalStatusAndDeletedFalse(
+            	        .findByIdAndMerchantIdAndStatusAndApprovalStatus(
             	            productId,
             	            merchantId,
             	            ProductStatus.ACTIVE,
@@ -937,7 +937,7 @@ public class OrderServiceImpl implements OrderService {
             	// restore logic 
             	womenProduct =
             		    womenProductRepository
-            		        .findByIdAndSeller_IdAndStatusAndApprovalStatusAndDeletedFalse(
+            		        .findByIdAndSeller_IdAndStatusAndApprovalStatus(
             		            productId,
             		            merchantId,
             		            ProductStatus.ACTIVE,

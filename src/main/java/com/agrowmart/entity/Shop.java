@@ -4,9 +4,17 @@ package com.agrowmart.entity;
 
 import com.agrowmart.admin_seller_management.enums.DocumentStatus;
 import com.agrowmart.entity.User;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import jakarta.persistence.*;
+import net.minidev.json.annotate.JsonIgnore;
 
 import java.time.LocalTime;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 @Entity
 @Table(name = "shops", uniqueConstraints = {
@@ -38,8 +46,59 @@ public class Shop {
  @Column(length = 500)
  private String shopLicensePhoto;           // URL as String
 
- @Column(length = 1000)
- private String workingHours;
+// @Column(length = 1000)
+// private String workingHours;
+ 
+ 
+ 
+//This is the actual column in database
+ @Column(columnDefinition = "JSON")  // MySQL
+ // @Column(columnDefinition = "jsonb")  // PostgreSQL (better performance)
+ private String workingHoursJson;
+
+ // ── Raw JSON access (used by JPA, DTOs, serialization) ──
+ public String getWorkingHoursJson() {
+     return workingHoursJson;
+ }
+
+ public void setWorkingHoursJson(String workingHoursJson) {
+     this.workingHoursJson = workingHoursJson;
+ }
+
+ // ── Convenient Map helpers (use these in service layer) ──
+ public void setWorkingHoursFromMap(Map<String, DayHours> hours) throws JsonProcessingException {
+     if (hours == null || hours.isEmpty()) {
+         this.workingHoursJson = null;
+         return;
+     }
+     ObjectMapper mapper = new ObjectMapper();
+     this.workingHoursJson = mapper.writeValueAsString(hours);
+ }
+
+ public Map<String, DayHours> getWorkingHoursAsMap() throws JsonProcessingException {
+     if (this.workingHoursJson == null || this.workingHoursJson.trim().isEmpty()) {
+         return new LinkedHashMap<>();
+     }
+
+     ObjectMapper mapper = new ObjectMapper();
+     return mapper.readValue(this.workingHoursJson,
+             new TypeReference<LinkedHashMap<String, DayHours>>() {});
+ }
+
+ // Inner class (can be static record in Java 17+)
+ public static class DayHours {
+     public boolean isOpen;
+     public String open;     // Recommended: "09:00" (24-hour)
+     public String close;
+
+     public DayHours() {} // for Jackson
+
+     public DayHours(boolean isOpen, String open, String close) {
+         this.isOpen = isOpen;
+         this.open = open;
+         this.close = close;
+     }
+ }
 
  @Column(length = 1000)
  private String shopDescription;
@@ -57,6 +116,7 @@ public class Shop {
  private boolean isActive = true;
 
  @OneToOne
+ @JsonIgnore
  @JoinColumn(name = "user_id", nullable = false, unique = true)
  private User user;
  
@@ -116,13 +176,7 @@ public class Shop {
 		this.shopLicensePhoto = shopLicensePhoto;
 	}
 
-	public String getWorkingHours() {
-		return workingHours;
-	}
 
-	public void setWorkingHours(String workingHours) {
-		this.workingHours = workingHours;
-	}
 
 	public String getShopDescription() {
 		return shopDescription;

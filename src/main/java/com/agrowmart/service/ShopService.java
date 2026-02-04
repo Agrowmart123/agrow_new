@@ -7,6 +7,7 @@ import com.agrowmart.dto.auth.shop.ShopResponse;
 import com.agrowmart.entity.Shop;
 import com.agrowmart.entity.User;
 import com.agrowmart.repository.ShopRepository;
+import com.fasterxml.jackson.core.JsonProcessingException;
 
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -35,7 +36,7 @@ public class ShopService {
 
  
  private static final Set<String> VENDOR_ROLES = Set.of(
-         "FARMER", "VEGETABLE", "DAIRY", "SEAFOODMEAT", "WOMEN"
+         "FARMER", "VEGETABLE", "DAIRY", "SEAFOODMEAT", "WOMEN","AGRI"
  );
 
  // ===================== CREATE SHOP =====================
@@ -53,7 +54,7 @@ public class ShopService {
      shop.setShopName(req.shopName());
      shop.setShopType(req.shopType());
      shop.setShopAddress(req.shopAddress());
-     shop.setWorkingHours(req.workingHours());
+     shop.setWorkingHoursJson(req.workingHoursJson());
      shop.setShopDescription(req.shopDescription());
      shop.setShopLicense(req.shopLicense());
      shop.setUser(user);
@@ -84,13 +85,25 @@ public class ShopService {
      shop.setShopName(req.shopName());
      shop.setShopType(req.shopType());
      shop.setShopAddress(req.shopAddress());
-     shop.setWorkingHours(req.workingHours());
+  
      shop.setShopDescription(req.shopDescription());
      shop.setShopLicense(req.shopLicense());
 
      shop.setOpensAt(req.opensAt());
      shop.setClosesAt(req.closesAt());
 
+  // ── Working hours JSON ────────────────────────────────
+     if (req.workingHoursJson() != null && !req.workingHoursJson().trim().isEmpty()) {
+         // Optional: you can add basic validation here
+         try {
+             // Minimal check that it's valid JSON (optional)
+             new com.fasterxml.jackson.databind.ObjectMapper().readTree(req.workingHoursJson());
+             shop.setWorkingHoursJson(req.workingHoursJson().trim());
+         } catch (JsonProcessingException e) {
+             throw new IllegalArgumentException("Invalid working hours JSON format", e);
+         }
+     }
+     
      // ✅ Replace image only if new one is provided
      if (req.shopPhoto() != null && !req.shopPhoto().isEmpty()) {
          if (shop.getShopPhoto() != null) {
@@ -99,6 +112,8 @@ public class ShopService {
          shop.setShopPhoto(uploadIfPresent(req.shopPhoto()));
      }
 
+ 
+     
      if (req.shopCoverPhoto() != null && !req.shopCoverPhoto().isEmpty()) {
          if (shop.getShopCoverPhoto() != null) {
              cloudinaryService.delete(shop.getShopCoverPhoto());
@@ -181,7 +196,7 @@ public class ShopService {
              s.getShopPhoto(),
              s.getShopCoverPhoto(),
              s.getShopLicensePhoto(),
-             s.getWorkingHours(),
+             s.getWorkingHoursJson(),
              s.getShopDescription(),
              s.getShopLicense(),
              s.isApproved(),
@@ -250,7 +265,7 @@ public Shop createOrUpdateShop(ShopRequest req, User user) throws IOException {
     if (req.shopName()        != null) shop.setShopName(req.shopName());
     if (req.shopType()        != null) shop.setShopType(req.shopType());
     if (req.shopAddress()     != null) shop.setShopAddress(req.shopAddress());
-    if (req.workingHours()    != null) shop.setWorkingHours(req.workingHours());
+    if (req.workingHoursJson()    != null) shop.setWorkingHoursJson(req.workingHoursJson());
     if (req.shopDescription() != null) shop.setShopDescription(req.shopDescription());
     if (req.shopLicense()     != null) shop.setShopLicense(req.shopLicense());
     if (req.opensAt()         != null) shop.setOpensAt(req.opensAt());

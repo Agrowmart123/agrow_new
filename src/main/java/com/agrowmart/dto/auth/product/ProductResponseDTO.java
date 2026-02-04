@@ -18,6 +18,8 @@ package com.agrowmart.dto.auth.product;
 
 import java.util.List;
 
+import com.agrowmart.dto.auth.shop.ShopSummaryDTO;
+
 public record ProductResponseDTO(
     Long id,
     String productName,
@@ -33,5 +35,6 @@ public record ProductResponseDTO(
    String stockStatus,
    // Code Change :- Aakansha
    // Changes:- Merge code Ankita 
-   Long serialNo
+   Long serialNo,
+   ShopSummaryDTO shop
 ) {}

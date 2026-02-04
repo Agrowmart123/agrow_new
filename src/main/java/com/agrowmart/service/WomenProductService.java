@@ -1,6 +1,7 @@
 package com.agrowmart.service;
 
 import com.agrowmart.dto.auth.product.ProductFilterDTO;
+import com.agrowmart.dto.auth.shop.ShopSummaryDTO;
 import com.agrowmart.dto.auth.women.WomenProductCreateDTO;
 import com.agrowmart.dto.auth.women.WomenProductResponseDTO;
 import com.agrowmart.entity.ApprovalStatus;
@@ -55,37 +56,7 @@ public class WomenProductService {
         }
     }
     
-    
-    // ========================= CREATE PRODUCT =========================
-//    public WomenProductResponseDTO createProduct(Long sellerId, WomenProductCreateDTO dto, List<MultipartFile> images) throws Exception {
-//    	validateSellerCanModify(sellerId);
-//    	
-//    	User seller = userRepo.findById(sellerId)
-//                .orElseThrow(() -> new ResourceNotFoundException("Seller not found"));
-//
-//        WomenProduct product = new WomenProduct();
-//        product.setSeller(seller);
-//        product.setName(dto.name());
-//        product.setCategory(dto.category());
-//        product.setDescription(dto.description());
-//     
-//        product.setMinPrice(dto.minPrice());
-//        product.setMaxPrice(dto.maxPrice());
-//        product.setStock(dto.stock() != null ? dto.stock() : 0);
-//        product.setUnit(dto.unit());
-//        product.setIsAvailable(dto.stock() != null && dto.stock() > 0);
-//        product.setIngredients(dto.ingredients());
-//        product.setShelfLife(dto.shelfLife());
-//        product.setPackagingType(dto.packagingType());
-//        product.setProductInfo(dto.productInfo());
-//        product.setApprovalStatus(ApprovalStatus.PENDING);
-//        // Upload product images
-//        List<String> uploadedUrls = uploadFiles(images);
-//        product.setImageUrls(String.join(",", uploadedUrls));
-//
-//        product = productRepo.save(product);
-//        return toDTO(product);
-//    }
+
     
     public WomenProductResponseDTO createProduct(Long sellerId, WomenProductCreateDTO dto, List<MultipartFile> images) throws Exception {
         validateSellerCanModify(sellerId);
@@ -131,26 +102,7 @@ public class WomenProductService {
         return toDTO(p);
     }
 
-    // ========================= DELETE PRODUCT =========================
-    public void deleteProduct(Long sellerId, Long productId) {
-    	validateSellerCanModify(sellerId);
-    	WomenProduct p = productRepo.findById(productId)
-                .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
-
-        if (!p.getSeller().getId().equals(sellerId)) {
-            throw new SecurityException("You can only delete your own products");
-        }
-
-        // Delete images from Cloudinary
-        if (p.getImageUrls() != null && !p.getImageUrls().isBlank()) {
-            Arrays.stream(p.getImageUrls().split(","))
-                    .map(this::extractPublicId)
-                    .forEach(cloudinaryService::delete);
-        }
-
-        productRepo.delete(p);
-    }
-
+  
     
     
     
@@ -224,49 +176,7 @@ public class WomenProductService {
                 .toList();
     }
     
-    
-    
-    // ========================= UPDATE PRODUCT =========================
-//    public WomenProductResponseDTO updateProduct(Long sellerId, Long productId, WomenProductCreateDTO dto, List<MultipartFile> newImages) throws Exception {
-//    	validateSellerCanModify(sellerId);
-//    	WomenProduct product = productRepo.findById(productId)
-//                .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
-//
-//        if (!product.getSeller().getId().equals(sellerId)) {
-//            throw new SecurityException("You can only update your own products");
-//        }
-//
-//        // Update fields
-//        product.setName(dto.name());
-//        product.setCategory(dto.category());
-//        product.setDescription(dto.description());
-//       
-//        product.setMinPrice(dto.minPrice());
-//        product.setMaxPrice(dto.maxPrice());
-//        product.setStock(dto.stock() != null ? dto.stock() : 0);
-//        product.setUnit(dto.unit());
-//        product.setIsAvailable(dto.stock() != null && dto.stock() > 0);
-//     // In updateProduct (preserve old value if not provided)
-//        product.setIngredients(dto.ingredients() != null ? dto.ingredients() : product.getIngredients());
-//        product.setShelfLife(dto.shelfLife() != null ? dto.shelfLife() : product.getShelfLife());
-//        product.setPackagingType(dto.packagingType() != null ? dto.packagingType() : product.getPackagingType());
-//        product.setProductInfo(dto.productInfo() != null ? dto.productInfo() : product.getProductInfo());
-//        // Delete old images from Cloudinary
-//        if (product.getImageUrls() != null && !product.getImageUrls().isBlank()) {
-//            Arrays.stream(product.getImageUrls().split(","))
-//                    .map(this::extractPublicId)
-//                    .forEach(cloudinaryService::delete);
-//        }
-//
-//        // Upload new images
-//        List<String> uploadedUrls = uploadFiles(newImages);
-//        product.setImageUrls(String.join(",", uploadedUrls));
-//
-//        product.setUpdatedAt(LocalDateTime.now());
-//        product = productRepo.save(product);
-//
-//        return toDTO(product);
-//    }
+
     
  // ========================= UPDATE PRODUCT =========================
     public WomenProductResponseDTO updateProduct(Long sellerId, Long productId, WomenProductCreateDTO dto, List<MultipartFile> newImages) throws Exception {
@@ -382,105 +292,60 @@ public class WomenProductService {
             return null;
         }
     }
-
     public WomenProductResponseDTO toDTO(WomenProduct p) {
+
+        // ---------- IMAGE URL PARSING ----------
         List<String> imageList = new ArrayList<>();
         if (p.getImageUrls() != null && !p.getImageUrls().isBlank()) {
             imageList = Arrays.asList(p.getImageUrls().split(","));
         }
 
+        // ---------- SELLER & SHOP ----------
+        User seller = p.getSeller();
+        var shop = seller != null ? seller.getShop() : null;
+
+        ShopSummaryDTO shopDTO = shop == null ? null : new ShopSummaryDTO(
+                shop.getId(),
+                shop.getShopName(),
+                shop.getShopPhoto(),
+                shop.getShopAddress(),
+                shop.getShopType()
+        );
+
+        // ---------- DTO MAPPING (ORDER MATTERS!) ----------
         return new WomenProductResponseDTO(
-                p.getId(),
-                p.getUuid(),
-                p.getSeller().getId(),
-                p.getSeller().getName(),
-                p.getName(),
-                p.getCategory(),
-                p.getDescription(),
-                p.getApprovalStatus(),  // FIXED: status goes here
-                p.getMinPrice(),
-                p.getMaxPrice(),
-                p.getStock(),
-                p.getUnit(),
-                imageList,
-                p.getIsAvailable(),
-                p.getCreatedAt(),
-                p.getIngredients(),
-                p.getShelfLife(),
-                p.getPackagingType(),
-                p.getProductInfo()
+                p.getId(),                       // Long id
+                p.getUuid(),                     // String uuid
+
+                seller != null ? seller.getId() : null,        // Long sellerId
+                seller != null ? seller.getName() : "Unknown Seller", // String sellerName
+
+                p.getName(),                     // String name
+                p.getCategory(),                 // String category
+                p.getDescription(),              // String description
+                p.getApprovalStatus(),            // ApprovalStatus status
+
+                p.getMinPrice(),                 // BigDecimal minPrice
+                p.getMaxPrice(),                 // BigDecimal maxPrice
+                p.getStock(),                    // Integer stock
+                p.getUnit(),                     // String unit
+
+                imageList,                       // List<String> imageUrls
+                p.getIsAvailable(),              // Boolean isAvailable
+                p.getCreatedAt(),                // LocalDateTime createdAt
+
+                // ===== NEW FIELDS =====
+                p.getIngredients(),              // String ingredients
+                p.getShelfLife(),                // String shelfLife
+                p.getPackagingType(),            // String packagingType
+                p.getProductInfo(),               // String productInfo
+
+                shopDTO                          // ShopSummaryDTO shop
         );
     }
-
-    
-    
-    
- // ===================== FILTERING - FULLY WORKING (Women Products Only) =====================
-//    public List<WomenProductResponseDTO> getFilteredProducts(ProductFilterDTO filter) {
-//        List<WomenProduct> products = productRepo.findAll();
-//        
-//
-//        // Category filter
-//        if (filter.categories() != null && !filter.categories().isEmpty()) {
-//            products = products.stream()
-//                    .filter(p -> filter.categories().contains(p.getCategory()))
-//                    .toList();
-//        }
-//
-//        // In Stock filter
-//        if (filter.inStock() != null && filter.inStock()) {
-//            products = products.stream()
-//                    .filter(p -> p.getStock() != null && p.getStock() > 0)
-//                    .toList();
-//        }
-//
-//        // Sorting (Price & Rating)
-//        if (filter.sortBy() != null) {
-//            boolean ascending = filter.sortBy().endsWith("_low_high");
-//            products = products.stream()
-//                    .sorted((p1, p2) -> {
-//                        return switch (filter.sortBy()) {
-//                            case "price_low_high", "price_high_low" ->
-//                                ascending ? p1.getMinPrice().compareTo(p2.getMinPrice())
-//                                          : p2.getMinPrice().compareTo(p1.getMinPrice());
-//       //                  case "rating_low_high", "rating_high_low" -> {
-////                                BigDecimal r1 = p1.getAverageRating() != null ? p1.getAverageRating() : BigDecimal.ZERO;
-////                                BigDecimal r2 = p2.getAverageRating() != null ? p2.getAverageRating() : BigDecimal.ZERO;
-////                               yield ascending ? r1.compareTo(r2) : r2.compareTo(r1);
-//   //                        }
-//                            default -> 0;
-//                        };
-//                    })
-//                    .toList();
-//        }
-//
-//        return products.stream()
-//                .map(this::toDTO)
-//                .toList();
-//    }
-//    
-
     
     
 
-    
- //--------------------
-    
- // Add to WomenProductService
-
-//    public List<WomenProductResponseDTO> getRecentlyAddedWomenProducts(int limit) {
-//        return productRepo.findAllByOrderByCreatedAtDesc()
-//            .stream()
-//            .limit(limit)
-//            .map(this::toDTO)
-//            .toList();
-//    }
-//    
-    
- //status
-    
- // Add this method
-    // Add this method
     public WomenProductResponseDTO updateWomenProductStatus(Long productId, boolean isActive, Long sellerId) {
         validateSellerCanModify(sellerId);
 
@@ -523,14 +388,63 @@ public class WomenProductService {
     
   //Deepti Kadam
     // ===================== ADMIN METHODS =====================
-       public List<WomenProduct> getAllProductsForAdmin() {
-           return productRepo.findAllByOrderByCreatedAtDesc();
-       }
+    public List<WomenProductResponseDTO> getAllProductsForAdmin() {
+        return productRepo.findAllWithSellerAndShopOrderByCreatedAtDesc()
+                .stream()
+                .map(this::toDTO)
+                .toList();
+    }
 
 
-       public WomenProduct getProductByIdForAdmin(Long id) {
-           return productRepo.findById(id)
-                   .orElseThrow(() -> new RuntimeException("Women product not found"));
-       }
+       
+   //-----------------------    
+       public void deleteProduct(Long sellerId, Long productId) {
+    	    validateSellerCanModify(sellerId);
 
+    	    WomenProduct product = productRepo.findById(productId)
+    	            .orElseThrow(() -> new ResourceNotFoundException("Product not found with ID: " + productId));
+
+    	    if (!product.getSeller().getId().equals(sellerId)) {
+    	        throw new ForbiddenException("You can only delete your own products");
+    	    }
+
+    	    // Critical: Block delete of APPROVED products
+    	    if (product.getApprovalStatus() == ApprovalStatus.APPROVED) {
+    	        throw new ForbiddenException(
+    	            "Approved products cannot be deleted by vendors. " +
+    	            "Only admin can remove approved/live products."
+    	        );
+    	    }
+
+    	    // Optional: Extra safety - block if product has any orders
+    	    // if (orderItemRepository.existsByWomenProductId(productId)) {
+    	    //     throw new ForbiddenException("Cannot delete - product is part of orders");
+    	    // }
+
+    	    // HARD DELETE - remove from database completely
+    	    productRepo.delete(product);
+
+    	    // Optional: Clean Cloudinary images
+    	    if (product.getImageUrls() != null && !product.getImageUrls().isBlank()) {
+    	        Arrays.stream(product.getImageUrls().split(","))
+    	              .filter(url -> url != null && !url.trim().isEmpty())
+    	              .map(this::extractPublicId)
+    	              .forEach(publicId -> {
+    	                  try {
+    	                      cloudinaryService.delete(publicId);
+    	                  } catch (Exception e) {
+    	                      // log error, don't fail
+    	                  }
+    	              });
+    	    }
+
+    	}
+       
+       
+       public WomenProductResponseDTO getProductByIdForAdmin(Long id) {
+    	    WomenProduct product = productRepo.findByIdWithSellerAndShop(id)
+    	            .orElseThrow(() -> new ResourceNotFoundException("Women product not found"));
+
+    	    return toDTO(product); // ✅ THIS includes ShopSummaryDTO
+    	}
 }

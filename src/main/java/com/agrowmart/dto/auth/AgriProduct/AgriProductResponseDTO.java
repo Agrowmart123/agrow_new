@@ -6,6 +6,8 @@ import java.util.List;
 
 import org.springframework.web.multipart.MultipartFile;
 
+import com.agrowmart.entity.AgriProduct.BaseAgriProduct.ApprovalStatus;
+
 public record AgriProductResponseDTO(
 
     Long id,
@@ -21,7 +23,12 @@ public record AgriProductResponseDTO(
     String AgrilicenseNumber,
     String AgrilicenseType,
     Boolean verified,
-
+ // In AgriProductResponseDTO add:
+    Boolean visibleToCustomers,
+ // NEW: Add approval status
+    ApprovalStatus approvalStatus,
+    String rejectionReason,
+   
     AgriVendorInfoDTO vendor,
 
     // Specific fields (nullable in record, will be null if not that type)

@@ -2,6 +2,7 @@ package com.agrowmart.controller;
 
 import com.agrowmart.dto.auth.offer.FreeGiftRequestDTO;
 import com.agrowmart.dto.auth.offer.FreeGiftResponseDTO;
+import com.agrowmart.dto.auth.offer.OfferStatusUpdateDTO;
 import com.agrowmart.entity.User;
 import com.agrowmart.service.OfferService;
 import org.springframework.http.*;
@@ -79,11 +80,28 @@ public class FreeGiftOfferController {
         return ResponseEntity.ok(response);
     }
 
+ // FreeGiftOfferController
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deactivate(
             @AuthenticationPrincipal User vendor,
             @PathVariable Long id) {
-        offerService.deactivateFreeGiftOffer(vendor, id);
+        offerService.deactivateFreeGiftOffer(vendor, id);   // now deletes permanently
         return ResponseEntity.noContent().build();
+    }
+    
+ // In FreeGiftOfferController.java  (for free gift offers)
+
+    @PatchMapping("/{id}/status")
+    public ResponseEntity<FreeGiftResponseDTO> updateFreeGiftStatus(
+            @AuthenticationPrincipal User vendor,
+            @PathVariable Long id,
+            @RequestBody OfferStatusUpdateDTO dto) {
+
+        if (dto.active() == null) {
+            throw new IllegalArgumentException("'active' field is required");
+        }
+
+        FreeGiftResponseDTO updated = offerService.updateFreeGiftOfferStatus(vendor, id, dto.active());
+        return ResponseEntity.ok(updated);
     }
 }

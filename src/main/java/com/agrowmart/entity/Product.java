@@ -196,19 +196,22 @@ public class Product {
         this.approvalStatus = approvalStatus;
     }
     
-// Restore 
-    
-    @Column(name = "is_deleted")
-    private Boolean deleted = false;
 
-    public Boolean getDeleted() {
-        return deleted;
+    
+    
+    
+ // Add this field
+    @Column(columnDefinition = "TEXT")
+    private String rejectionReason;
+
+    // Getter & Setter
+    public String getRejectionReason() {
+        return rejectionReason;
     }
 
-    public void setDeleted(Boolean deleted) {
-        this.deleted = deleted;
+    public void setRejectionReason(String rejectionReason) {
+        this.rejectionReason = rejectionReason;
     }
-    
 
     // ... rest of the class ...
 }

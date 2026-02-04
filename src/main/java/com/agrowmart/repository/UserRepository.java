@@ -149,5 +149,18 @@ public interface UserRepository extends JpaRepository<User, Long> {
             @Param("end") LocalDateTime end,
             Pageable pageable
     );
+    
+    
+    
+    List<User> findAllByDeletedTrueAndDeletedAtBefore(LocalDateTime dateTime);
 
+    
+    
+    
+    
+     // Fetch deleted vendors
+       Page<User> findByRole_IdInAndDeletedTrue(List<Short> list, Pageable pageable);
+
+       // Fetch active vendors
+       Page<User> findByRole_IdInAndDeletedFalse(List<Long> roleIds, Pageable pageable);
 }

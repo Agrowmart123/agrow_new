@@ -7,6 +7,9 @@ import com.agrowmart.admin_seller_management.enums.DocumentStatus;
 import com.agrowmart.admin_seller_management.enums.RejectReason;
 import com.agrowmart.entity.*;
 import com.agrowmart.repository.*;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+
 
 import jakarta.transaction.Transactional;
 import jakarta.validation.Valid;
@@ -24,21 +27,46 @@ public class AdminSellerService {
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final ShopRepository shopRepository;
+    private final AdminAuditService adminAuditService;
 
     public AdminSellerService(
             UserRepository userRepository,
             RoleRepository roleRepository,
-            ShopRepository shopRepository) {
+            ShopRepository shopRepository,AdminAuditService adminAuditService) {
 
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.shopRepository = shopRepository;
+        this.adminAuditService = adminAuditService;
     }
+    
+    private Long getAdminId() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+
+        if (auth == null || !auth.isAuthenticated()) {
+            throw new IllegalStateException("Admin not authenticated");
+        }
+
+        Object principal = auth.getPrincipal();
+
+        if (!(principal instanceof User)) {
+            throw new IllegalStateException("Invalid admin principal");
+        }
+
+        User admin = (User) principal;
+        return admin.getId();
+    }
+    
+    private User getAdminUser() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        return (User) auth.getPrincipal();
+    }
+
 
     // ================= ROLE IDS =================
     private List<Short> vendorRoleIds() {
         return roleRepository.findByNameIn(
-                List.of("VEGETABLE", "DAIRY", "SEAFOODMEAT", "WOMEN")
+                List.of("VEGETABLE", "DAIRY", "SEAFOODMEAT", "WOMEN","AGRI")
         ).stream()
          .map(Role::getId)
          .toList();
@@ -71,7 +99,12 @@ public class AdminSellerService {
         List<Map<String, Object>> data = users.getContent().stream().map(u -> {
             Map<String, Object> map = new HashMap<>();
             map.put("id", u.getId());
-            map.put("storeName", u.getBusinessName());
+            Shop shop = shopRepository.findByUserId(u.getId()).orElse(null);
+
+            map.put("storeName",
+                    shop != null ? shop.getShopName() : u.getBusinessName()
+            );
+
             map.put("sellerName", u.getName());
             map.put("phone", u.getPhone());
             map.put("email", u.getEmail());
@@ -173,7 +206,7 @@ public class AdminSellerService {
             shopDto.setShopType(shop.getShopType());
             shopDto.setShopAddress(shop.getShopAddress());
             shopDto.setDescription(shop.getShopDescription());
-            shopDto.setWorkingHours(shop.getWorkingHours());
+            shopDto.setWorkingHours(shop.getWorkingHoursJson());;
             shopDto.setShopPhoto(shop.getShopPhoto());
             shopDto.setShopCoverPhoto(shop.getShopCoverPhoto());
             shopDto.setShopLicense(shop.getShopLicense());
@@ -335,6 +368,11 @@ public class AdminSellerService {
         Shop shop = shopRepository.findByUserId(vendorId)
                 .orElseThrow(() -> new RuntimeException("Shop not found"));
 
+        // 🔎 PREVIOUS STATUS (for audit)
+        String previousStatus = user.getAccountStatus() != null
+                ? user.getAccountStatus().name()
+                : AccountStatus.PENDING.name();
+
         // ================= RESET ALL DOCUMENT STATUSES =================
         user.setAadhaarStatus(DocumentStatus.APPROVED);
         user.setPanStatus(DocumentStatus.APPROVED);
@@ -377,7 +415,18 @@ public class AdminSellerService {
         // ================= SAVE =================
         userRepository.save(user);
         shopRepository.save(shop);
+
+        // 🔥 AUDIT LOG (ADMIN ACTION)
+        adminAuditService.log(
+                getAdminId(),                 // adminId
+                vendorId,                     // vendorId
+                "REJECT",                     // action
+                reason,                       // reason
+                previousStatus,               // from
+                AccountStatus.REJECTED.name() // to
+        );
     }
+
 
 
 
@@ -455,4 +504,155 @@ public class AdminSellerService {
 
         userRepository.save(user);
     }
+    
+    private void validateDocumentsForRestore(User user, Shop shop) {
+
+        if (user.getAadhaarStatus() == DocumentStatus.REJECTED ||
+            user.getPanStatus() == DocumentStatus.REJECTED ||
+            user.getUdhyamStatus() == DocumentStatus.REJECTED ||
+            shop.getShopLicensePhotoStatus() == DocumentStatus.REJECTED) {
+
+            throw new IllegalStateException(
+                    "Vendor cannot be restored because one or more documents are rejected. " +
+                    "Please approve documents before restoring."
+            );
+        }
+    }
+
+    
+    @Transactional
+    public void adminSoftDeleteVendor(Long vendorId) {
+
+        User user = userRepository.findById(vendorId)
+                .orElseThrow(() -> new RuntimeException("Vendor not found"));
+
+        if (user.isDeleted()) {
+            throw new IllegalStateException("Vendor already deleted");
+        }
+
+        String previousStatus = user.getAccountStatus() != null
+                ? user.getAccountStatus().name()
+                : AccountStatus.PENDING.name();
+
+     // ✅ Soft delete using existing model
+        user.markAsDeleted(getAdminUser());
+
+
+        // ✅ Use BLOCKED (not DELETED)
+        user.setAccountStatus(AccountStatus.BLOCKED);
+        user.setStatusReason("Deleted by admin");
+        user.setStatusUpdatedAt(LocalDateTime.now());
+
+        shopRepository.findByUserId(vendorId)
+                .ifPresent(shop -> {
+                    shop.setActive(false);
+                    shop.setApproved(false);
+                    shopRepository.save(shop);
+                });
+
+        userRepository.save(user);
+
+        adminAuditService.log(
+                getAdminId(),
+                vendorId,
+                "SOFT_DELETE",
+                "Deleted by admin",
+                previousStatus,
+                AccountStatus.BLOCKED.name()
+        );
+    }
+
+    @Transactional
+    public void adminRestoreVendor(Long vendorId) {
+
+        User user = userRepository.findById(vendorId)
+                .orElseThrow(() -> new RuntimeException("Vendor not found"));
+
+        if (!user.isDeleted()) {
+            throw new IllegalStateException("Vendor is not deleted");
+        }
+
+        Shop shop = shopRepository.findByUserId(vendorId)
+                .orElseThrow(() -> new RuntimeException("Shop not found"));
+
+        // 🔒 Document validation (unchanged)
+        validateDocumentsForRestore(user, shop);
+
+        // 🔎 Previous status for audit
+        String previousStatus = user.getAccountStatus() != null
+                ? user.getAccountStatus().name()
+                : AccountStatus.BLOCKED.name();
+
+        // ✅ Restore soft-delete flags
+        user.restore();
+
+        // ✅ Restore business state
+        user.setAccountStatus(AccountStatus.APPROVED);
+        user.setStatusReason("Restored by admin");
+        user.setStatusUpdatedAt(LocalDateTime.now());
+
+        // 🔼 Restore shop
+        shop.setApproved(true);
+        shop.setActive(true);
+
+        userRepository.save(user);
+        shopRepository.save(shop);
+
+        // 🔥 Audit log
+        adminAuditService.log(
+                getAdminId(),
+                vendorId,
+                "RESTORE",
+                "Restored by admin",
+                previousStatus,
+                AccountStatus.APPROVED.name()
+        );
+    }
+
+
+
+
+ // Method to fetch deleted vendors
+    public ApiResponseDTO<List<Map<String, Object>>> getDeletedVendors(int page, int size) {
+
+        Pageable pageable = PageRequest.of(
+                page, size, Sort.by(Sort.Direction.DESC, "deletedAt")
+        );
+
+        // Fetch deleted vendors based on vendor role IDs
+        Page<User> users = userRepository.findByRole_IdInAndDeletedTrue(vendorRoleIds(), pageable);
+
+        // Map Users to response data
+        List<Map<String, Object>> data = users.getContent().stream().map(u -> {
+            Map<String, Object> map = new HashMap<>();
+            map.put("id", u.getId());
+            map.put("sellerName", u.getName());
+            map.put("email", u.getEmail());
+            map.put("phone", u.getPhone());
+            map.put("vendorType", u.getRole().getName());
+            map.put("deletedAt", u.getDeletedAt());
+            map.put("statusReason", u.getStatusReason());
+
+            // Optional shop
+            Optional.ofNullable(u.getShop())
+                    .ifPresent(shop -> map.put("storeName", shop.getShopName()));
+
+            return map;
+        }).toList();
+
+        // Return API response
+        return new ApiResponseDTO<>(
+                true,
+                "Deleted vendors fetched",
+                data,
+                new PaginationInfo(
+                        users.getTotalElements(),
+                        users.getTotalPages(),
+                        users.getNumber(),
+                        users.getSize()
+                )
+        );
+    }
+
+    
 }

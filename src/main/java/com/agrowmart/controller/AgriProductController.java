@@ -1,107 +1,9 @@
-//package com.agrowmart.controller;
-//
-//import com.agrowmart.dto.auth.AgriProduct.AgriProductCreateDTO;
-//import com.agrowmart.dto.auth.AgriProduct.AgriProductResponseDTO;
-//import com.agrowmart.service.AgriProductService;
-//import jakarta.validation.Valid;
-//import org.springframework.beans.factory.annotation.Autowired;
-//import org.springframework.http.ResponseEntity;
-//import org.springframework.security.access.prepost.PreAuthorize;
-//import org.springframework.security.core.Authentication;
-//import org.springframework.web.bind.annotation.*;
-//import org.springframework.web.multipart.MultipartFile;
-//import org.springframework.http.MediaType;
-//import java.util.List;
-//
-//@RestController
-//@RequestMapping("/api/v1/agri/products")
-//public class AgriProductController {
-//
-//    @Autowired
-//    private AgriProductService service;
-//
-//    /**
-//     * CREATE Agri Product - Now supports image upload via Cloudinary
-//     * Content-Type: multipart/form-data
-//     */
-//    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-//    public ResponseEntity<AgriProductResponseDTO> create(
-//            @Valid @RequestPart("dto") AgriProductCreateDTO dto,
-//            @RequestPart(value = "AgriimageUrl", required = false) List<MultipartFile> imageFiles,
-//            @RequestPart(value = "licenseImage", required = false) MultipartFile licenseImage,
-//            Authentication auth) {
-//
-//        return ResponseEntity.ok(service.create(dto, imageFiles, licenseImage, auth));
-//    }
-//
-//    /**
-//     * GET All Agri Products - Public access
-//     */
-//    @GetMapping
-//    @PreAuthorize("permitAll()")
-//    public ResponseEntity<List<AgriProductResponseDTO>> getAll() {
-//        return ResponseEntity.ok(service.getAll());
-//    }
-//
-//    /**
-//     * GET Single Product by ID - Public access
-//     */
-//    @GetMapping("/{id}")
-//    @PreAuthorize("permitAll()")
-//    public ResponseEntity<AgriProductResponseDTO> getOne(@PathVariable Long id) {
-//        return ResponseEntity.ok(service.getById(id));
-//    }
-//
-//    /**
-//     * GET My Products - Only authenticated AGRI vendor
-//     */
-//    @GetMapping("/my")
-//    @PreAuthorize("hasAuthority('AGRI')")
-//    public ResponseEntity<List<AgriProductResponseDTO>> getMy(Authentication auth) {
-//        return ResponseEntity.ok(service.getMyProducts(auth));
-//    }
-//
-//    /**
-//     * UPDATE Agri Product - Currently uses JSON (no image update yet)
-//     * You can extend this later to support file upload like create()
-//     */
-//    @PutMapping(value = "/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-//    @PreAuthorize("hasAuthority('AGRI')")
-//    public ResponseEntity<AgriProductResponseDTO> update(
-//            @PathVariable Long id,
-//            @Valid @RequestBody AgriProductCreateDTO dto,
-//            Authentication auth) {
-//
-//        return ResponseEntity.ok(service.update(id, dto, auth));
-//    }
-//
-//    /**
-//     * DELETE Agri Product
-//     */
-//    @DeleteMapping("/{id}")
-//    @PreAuthorize("hasAuthority('AGRI')")
-//    public ResponseEntity<Void> delete(@PathVariable Long id, Authentication auth) {
-//        service.delete(id, auth);
-//        return ResponseEntity.noContent().build();
-//    }
-//
-//    /**
-//     * SEARCH Agri Products - Uncomment when ready
-//     */
-//    // @GetMapping("/search")
-//    // @PreAuthorize("permitAll()")
-//    // public ResponseEntity<List<AgriProductResponseDTO>> search(@RequestParam String keyword) {
-//    //     return ResponseEntity.ok(service.search(keyword));
-//    // }
-//}
-
-
-
 
 package com.agrowmart.controller;
 
 import com.agrowmart.dto.auth.AgriProduct.AgriProductCreateDTO;
 import com.agrowmart.dto.auth.AgriProduct.AgriProductResponseDTO;
+import com.agrowmart.dto.auth.AgriProduct.ProductVisibilityDTO;
 import com.agrowmart.service.AgriProductService;
 
 import jakarta.validation.Valid;
@@ -305,5 +207,29 @@ public class AgriProductController {
     @PreAuthorize("permitAll()")
     public ResponseEntity<List<AgriProductResponseDTO>> search(@RequestParam String keyword) {
         return ResponseEntity.ok(service.search(keyword));  // ← Fixed
+    }
+    
+    
+ // Add this method inside AgriProductController
+
+    @PatchMapping("/{id}/visibility")
+    @PreAuthorize("hasAuthority('AGRI')")
+    public ResponseEntity<AgriProductResponseDTO> toggleVisibility(
+            @PathVariable Long id,
+            @RequestBody ProductVisibilityDTO dto,
+            Authentication auth) {
+
+        AgriProductResponseDTO updated = service.updateVisibility(id, dto.visible(), auth);
+        return ResponseEntity.ok(updated);
+    }
+    
+    
+    
+  //-
+ // Add this endpoint to AgriProductController.java
+    @GetMapping("/my/rejected")
+    @PreAuthorize("hasAuthority('AGRI')")
+    public ResponseEntity<List<AgriProductResponseDTO>> getMyRejectedProducts(Authentication auth) {
+        return ResponseEntity.ok(service.getMyRejectedProducts(auth));
     }
 }
