@@ -7,6 +7,9 @@ import com.agrowmart.dto.auth.AgriProduct.AgriVendorInfoDTO;
 import com.agrowmart.entity.User;
 import com.agrowmart.entity.AgriProduct.*;
 import com.agrowmart.entity.AgriProduct.BaseAgriProduct.ApprovalStatus;
+import com.agrowmart.exception.AuthExceptions.AuthenticationFailedException;
+import com.agrowmart.exception.AuthExceptions.BusinessValidationException;
+import com.agrowmart.exception.AuthExceptions.FileUploadException;
 import com.agrowmart.exception.SubscriptionLimitExceededException;
 import com.agrowmart.repository.AgriProductRepository;
 import com.agrowmart.repository.UserRepository;
@@ -42,15 +45,14 @@ public class AgriProductService {
 
     // Helper: Get authenticated vendor
     private User getCurrentVendor(Authentication auth) {
-        if (auth == null || !auth.isAuthenticated()) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Unauthorized: No authentication found");
+    	if (auth == null || !auth.isAuthenticated()) {
+            throw new AuthenticationFailedException("Unauthorized: Please login first");
         }
         Object principal = auth.getPrincipal();
         if (principal instanceof User user) {
             return user;
         }
-        throw new RuntimeException("Authentication principal is not User entity. Got: "
-                + (principal == null ? "null" : principal.getClass().getName()));
+        throw new AuthenticationFailedException("Invalid authentication: Expected User object");
     }
 
     // Helper: Map vendor to DTO
@@ -68,6 +70,7 @@ public class AgriProductService {
 
     // Helper: Convert entity to response DTO
     public AgriProductResponseDTO entityToDto(BaseAgriProduct p) {
+
         String fertilizerType = null, nutrientComposition = null, fcoNumber = null;
         String seedscropType = null, seedsvariety = null, seedClass = null;
         Double seedsgerminationPercentage = null, seedsphysicalPurityPercentage = null;
@@ -102,59 +105,59 @@ public class AgriProductService {
         }
 
         return new AgriProductResponseDTO(
-                p.getId(),
-                p.getAgriproductName(),
-                p.getAgricategory(),
-                p.getAgridescription(),
-                p.getAgriprice(),
-                p.getAgriunit(),
-                p.getAgriquantity(),
-                p.getAgriImageUrls(),
-                p.getAgribrandName(),
-                p.getAgripackagingType(),
-                p.getAgrilicenseNumber(),
-                p.getAgrilicenseType(),
-                p.getVerified(),
-                p.isVisibleToCustomers(),
-                p.getApprovalStatus(),          // ← added
-                p.getRejectionReason(),
-                mapVendor(p.getVendor()),
-                
-                fertilizerType, nutrientComposition, fcoNumber,
-                seedscropType, seedsvariety, seedClass,
-                seedsgerminationPercentage, seedsphysicalPurityPercentage, seedslotNumber,
-                pesticideType, pesticideActiveIngredient, pesticideToxicity,
-                pesticideCibrcNumber, pesticideFormulation,
-                pipeType, pipeSize, pipeLength, pipeBisNumber
+            p.getId(),
+            p.getAgriproductName(),
+            p.getAgricategory(),
+            p.getAgridescription(),
+            p.getAgriprice(),
+            p.getAgriunit(),
+            p.getAgriquantity(),
+
+            p.getAgriImageUrls(),   // ✅ CORRECT POSITION
+            p.getCreatedAt(),       // ✅ CORRECT POSITION
+
+            p.getAgribrandName(),
+            p.getAgripackagingType(),
+            p.getAgrilicenseNumber(),
+            p.getAgrilicenseType(),
+            p.getVerified(),
+            p.isVisibleToCustomers(),
+            p.getApprovalStatus(),
+            p.getRejectionReason(),
+            mapVendor(p.getVendor()),
+
+            fertilizerType, nutrientComposition, fcoNumber,
+            seedscropType, seedsvariety, seedClass,
+            seedsgerminationPercentage, seedsphysicalPurityPercentage, seedslotNumber,
+            pesticideType, pesticideActiveIngredient, pesticideToxicity,
+            pesticideCibrcNumber, pesticideFormulation,
+            pipeType, pipeSize, pipeLength, pipeBisNumber
         );
     }
+
 
     // ==================================================================
     // Combined validation: Online + Profile complete + Subscription + AGRI only
     // ==================================================================
     private void validateVendorCanManageProducts(User vendor) {
-        if (vendor == null) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Vendor authentication required");
+    	if (vendor == null) {
+            throw new AuthenticationFailedException("Vendor authentication required");
         }
 
-        // 1. Only AGRI vendors allowed
+        // 1. Only AGRI vendors
         if (!"AGRI".equals(vendor.getRole().getName())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Only AGRI vendors are allowed to manage agricultural products.");
+            throw new BusinessValidationException("Only AGRI vendors can manage agricultural products");
         }
 
         // 2. Must be ONLINE
         if (!"ONLINE".equalsIgnoreCase(vendor.getOnlineStatus())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "You must be ONLINE to add, update or delete products. Update your status first.");
+            throw new BusinessValidationException("You must be ONLINE to manage products. Update your status first.");
         }
 
-        // 3. Profile must be 100% complete
+        // 3. Profile must be completed
         if (!"YES".equals(vendor.getProfileCompleted())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Please complete your profile 100% before managing products.");
+            throw new BusinessValidationException("Please complete your profile 100% before managing products");
         }
-        
         
 
         // 4. Subscription check (product limit, active subscription, etc.)
@@ -176,13 +179,17 @@ public class AgriProductService {
         // All checks in one place
         validateVendorCanManageProducts(vendor);
         
-
+        if (dto == null || dto.category() == null || dto.category().trim().isEmpty()) {
+            throw new BusinessValidationException("Product category is required");
+        }
+        
+        
         BaseAgriProduct product = switch (dto.category().toUpperCase()) {
             case "FERTILIZER" -> new Fertilizer();
             case "SEEDS" -> new Seeds();
             case "PESTICIDE" -> new Pesticide();
             case "PIPE" -> new Pipe();
-            default -> throw new IllegalArgumentException("Invalid category: " + dto.category());
+            default -> throw new BusinessValidationException("Invalid category: " + dto.category());
         };
 
         // Upload product images
@@ -193,8 +200,8 @@ public class AgriProductService {
                     try {
                         String url = cloudinaryService.upload(file);
                         uploadedImageUrls.add(url);
-                    } catch (IOException e) {
-                        throw new RuntimeException("Failed to upload product image: " + file.getOriginalFilename(), e);
+                    } catch (FileUploadException e) {
+                        throw new FileUploadException("Failed to upload product image: " + file.getOriginalFilename(), e);
                     }
                 }
             }
@@ -205,8 +212,8 @@ public class AgriProductService {
         if (licenseImageFile != null && !licenseImageFile.isEmpty()) {
             try {
                 licenseImageUrl = cloudinaryService.upload(licenseImageFile);
-            } catch (IOException e) {
-                throw new RuntimeException("Failed to upload license image", e);
+            } catch (FileUploadException e) {
+                throw new FileUploadException("Failed to upload license image", e);
             }
         }
 
@@ -272,9 +279,7 @@ public class AgriProductService {
         validateVendorCanManageProducts(vendor);
 
         BaseAgriProduct existing = repository.findByIdAndVendor(id, vendor)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Product not found or you don't own it"));
-
+                .orElseThrow(() -> new BusinessValidationException("Product not found or you don't own it"));
         // Update fields
         existing.setAgriproductName(dto.AgriproductName());
         existing.setAgridescription(dto.Agridescription());
@@ -334,11 +339,8 @@ public class AgriProductService {
 
         // All checks in one place
         validateVendorCanManageProducts(vendor);
-
         BaseAgriProduct existing = repository.findByIdAndVendor(id, vendor)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Product not found or you don't own it"));
-
+                .orElseThrow(() -> new BusinessValidationException("Product not found or you don't own it"));
         // Handle images
         List<String> currentImages = existing.getAgriImageUrls() != null ?
                 new ArrayList<>(existing.getAgriImageUrls()) : new ArrayList<>();
@@ -350,8 +352,8 @@ public class AgriProductService {
                     try {
                         String url = cloudinaryService.upload(file);
                         uploadedUrls.add(url);
-                    } catch (IOException e) {
-                        throw new RuntimeException("Failed to upload new product image", e);
+                    } catch (FileUploadException e) {
+                        throw new FileUploadException("Failed to upload new product image", e);
                     }
                 }
             }
@@ -362,8 +364,8 @@ public class AgriProductService {
             try {
                 String newLicenseUrl = cloudinaryService.upload(newLicenseImage);
                 existing.setAgrilicenseImageUrl(newLicenseUrl);
-            } catch (IOException e) {
-                throw new RuntimeException("Failed to upload new license image", e);
+            } catch (FileUploadException e) {
+                throw new FileUploadException("Failed to upload new license image", e);
             }
         }
 
@@ -441,14 +443,15 @@ public class AgriProductService {
     @Transactional
     public void delete(Long id, Authentication auth) {
         User vendor = getCurrentVendor(auth);
+        
+  
         BaseAgriProduct product = repository.findByIdAndVendor(id, vendor)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Product not found or you don't own it"));
+                .orElseThrow(() -> new BusinessValidationException("Product not found or you don't own it"));
         
         if (product.getApprovalStatus() == BaseAgriProduct.ApprovalStatus.APPROVED) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, 
-                    "You cannot delete approved products. Contact admin if needed.");
+        	 throw new BusinessValidationException("Approved products cannot be deleted. Contact admin.");
         }
+        
         
         repository.delete(product);
     }

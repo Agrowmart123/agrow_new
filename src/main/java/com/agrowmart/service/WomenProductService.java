@@ -2,16 +2,22 @@ package com.agrowmart.service;
 
 import com.agrowmart.dto.auth.product.ProductFilterDTO;
 import com.agrowmart.dto.auth.shop.ShopSummaryDTO;
+import com.agrowmart.dto.auth.shop.WorkingHourDTO;
 import com.agrowmart.dto.auth.women.WomenProductCreateDTO;
 import com.agrowmart.dto.auth.women.WomenProductResponseDTO;
 import com.agrowmart.entity.ApprovalStatus;
 import com.agrowmart.entity.Product.ProductStatus;
+import com.agrowmart.entity.Shop;
 import com.agrowmart.entity.User;
 import com.agrowmart.entity.WomenProduct;
+import com.agrowmart.exception.AuthExceptions.BusinessValidationException;
 import com.agrowmart.exception.ForbiddenException;
 import com.agrowmart.exception.ResourceNotFoundException;
 import com.agrowmart.repository.UserRepository;
 import com.agrowmart.repository.WomenProductRepository;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -20,17 +26,23 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
-
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 @Service
 @Transactional
 
 public class WomenProductService {
-
+	private static final Logger log = LoggerFactory.getLogger(WomenProductService.class);
+	
     private final WomenProductRepository productRepo;
     private final UserRepository userRepo;
     private final CloudinaryService cloudinaryService;
@@ -44,15 +56,16 @@ public class WomenProductService {
     
  // Add in WomenProductService
     private void validateSellerCanModify(Long sellerId) {
+    	
         User seller = userRepo.findById(sellerId)
             .orElseThrow(() -> new ResourceNotFoundException("Seller not found"));
 
         if (!"ONLINE".equalsIgnoreCase(seller.getOnlineStatus())) {
-            throw new ForbiddenException("You must set your status to ONLINE to manage products.");
+            throw new BusinessValidationException("You must set your status to ONLINE to manage products.");
         }
 
         if (!"YES".equals(seller.getProfileCompleted())) {
-            throw new ForbiddenException("Complete your profile first before adding or modifying products.");
+            throw new BusinessValidationException("Complete your profile first before adding or modifying products.");
         }
     }
     
@@ -90,6 +103,8 @@ public class WomenProductService {
         product.setImageUrls(String.join(",", uploadedUrls));
         
         product = productRepo.save(product);
+        
+        log.info("Women product created → ID: {}, Seller: {}", product.getId(), sellerId);
         return toDTO(product);
     }
 
@@ -266,6 +281,7 @@ public class WomenProductService {
         product.setUpdatedAt(LocalDateTime.now());
 
         product = productRepo.save(product);
+        log.info("Women product updated → ID: {}, Seller: {}", productId, sellerId);
         return toDTO(product);
     }
 
@@ -292,6 +308,8 @@ public class WomenProductService {
             return null;
         }
     }
+
+    
     public WomenProductResponseDTO toDTO(WomenProduct p) {
 
         // ---------- IMAGE URL PARSING ----------
@@ -302,28 +320,40 @@ public class WomenProductService {
 
         // ---------- SELLER & SHOP ----------
         User seller = p.getSeller();
-        var shop = seller != null ? seller.getShop() : null;
+        Shop shop = seller != null ? seller.getShop() : null;
 
-        ShopSummaryDTO shopDTO = shop == null ? null : new ShopSummaryDTO(
-                shop.getId(),
-                shop.getShopName(),
-                shop.getShopPhoto(),
-                shop.getShopAddress(),
-                shop.getShopType()
-        );
+        ShopSummaryDTO shopDTO = null;
 
+        if (shop != null) {
+        	 Boolean open = isShopOpenFromWorkingHours(shop);
+
+            shopDTO = new ShopSummaryDTO(
+                    shop.getId(),                          // Long shopId
+                    shop.getShopName(),                    // String shopName
+                    shop.getShopPhoto(),                   // String shopPhoto
+                    shop.getShopAddress(),                 // String shopAddress
+                    shop.getShopType(),                    // String shopType
+                    extractCity(shop.getShopAddress()),    // String city
+                    extractPincode(shop.getShopAddress()), // String pincode
+                    0.0,                                   // Double rating
+                    open                                   // Boolean open
+            );
+        }
+
+        
+        
         // ---------- DTO MAPPING (ORDER MATTERS!) ----------
         return new WomenProductResponseDTO(
                 p.getId(),                       // Long id
                 p.getUuid(),                     // String uuid
 
-                seller != null ? seller.getId() : null,        // Long sellerId
-                seller != null ? seller.getName() : "Unknown Seller", // String sellerName
+                seller != null ? seller.getId() : null,              // Long sellerId
+                seller != null ? seller.getName() : "Unknown Seller",// String sellerName
 
                 p.getName(),                     // String name
                 p.getCategory(),                 // String category
                 p.getDescription(),              // String description
-                p.getApprovalStatus(),            // ApprovalStatus status
+                p.getApprovalStatus(),           // ApprovalStatus status
 
                 p.getMinPrice(),                 // BigDecimal minPrice
                 p.getMaxPrice(),                 // BigDecimal maxPrice
@@ -334,15 +364,112 @@ public class WomenProductService {
                 p.getIsAvailable(),              // Boolean isAvailable
                 p.getCreatedAt(),                // LocalDateTime createdAt
 
-                // ===== NEW FIELDS =====
+                // ===== EXTRA FIELDS =====
                 p.getIngredients(),              // String ingredients
                 p.getShelfLife(),                // String shelfLife
                 p.getPackagingType(),            // String packagingType
-                p.getProductInfo(),               // String productInfo
+                p.getProductInfo(),              // String productInfo
 
-                shopDTO                          // ShopSummaryDTO shop
+                shopDTO                          // ShopSummaryDTO
         );
     }
+
+    
+    
+    
+    
+    
+
+    private Boolean isShopOpenFromWorkingHours(Shop shop) {
+        if (shop == null || shop.getWorkingHoursJson() == null || shop.getWorkingHoursJson().trim().isEmpty()) {
+            System.out.println("Shop " + (shop != null ? shop.getId() : "null") + " has no working hours JSON");
+            return false;
+        }
+
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            List<WorkingHourDTO> hours = mapper.readValue(
+                    shop.getWorkingHoursJson(),
+                    new TypeReference<List<WorkingHourDTO>>() {}
+            );
+
+            if (hours.isEmpty()) {
+                System.out.println("Shop " + shop.getId() + " has empty working hours list");
+                return false;
+            }
+
+            String today = LocalDate.now(ZoneId.of("Asia/Kolkata"))
+                    .getDayOfWeek()
+                    .name();  // MONDAY, TUESDAY, ...
+
+            LocalTime now = LocalTime.now(ZoneId.of("Asia/Kolkata"));
+
+            // Debug info (you can switch to proper logger later)
+            System.out.println("Shop ID: " + shop.getId() +
+                    " | Today: " + today +
+                    " | Current time: " + now);
+
+            System.out.println("Working hours JSON: " + shop.getWorkingHoursJson());
+
+            for (WorkingHourDTO h : hours) {
+                String storedDay = h.getDay();
+                if (storedDay == null || storedDay.trim().isEmpty()) {
+                    continue;
+                }
+
+                String normalizedDay = storedDay.trim().toUpperCase();
+
+                System.out.println("  Checking day: " + storedDay + " → normalized: " + normalizedDay);
+
+                if (today.equals(normalizedDay)) {
+                    String openStr = h.getOpen();
+                    String closeStr = h.getClose();
+
+                    if (openStr == null || closeStr == null || openStr.trim().isEmpty() || closeStr.trim().isEmpty()) {
+                        System.out.println("  Invalid time format for " + normalizedDay);
+                        continue;
+                    }
+
+                    LocalTime openTime = LocalTime.parse(openStr.trim());
+                    LocalTime closeTime = LocalTime.parse(closeStr.trim());
+
+                    System.out.println("  → Found matching day: " + normalizedDay +
+                            " | Open: " + openTime +
+                            " | Close: " + closeTime +
+                            " | Now: " + now);
+
+                    // Normal opening hours (open < close)
+                    if (closeTime.isAfter(openTime)) {
+                        boolean isOpen = !now.isBefore(openTime) && !now.isAfter(closeTime);
+                        System.out.println("  → Normal hours → isOpen = " + isOpen);
+                        return isOpen;
+                    }
+                    // Overnight hours (e.g. 22:00 – 06:00)
+                    else {
+                        boolean isOpen = !now.isBefore(openTime) || !now.isAfter(closeTime);
+                        System.out.println("  → Overnight hours → isOpen = " + isOpen);
+                        return isOpen;
+                    }
+                }
+            }
+
+            System.out.println("No matching day found for shop " + shop.getId() + " (today is " + today + ")");
+            return false;
+
+        } catch (JsonProcessingException e) {
+            System.err.println("Invalid JSON format for shop " + shop.getId() + ": " + e.getMessage());
+            return false;
+        } catch (DateTimeParseException e) {
+            System.err.println("Time parsing error for shop " + shop.getId() + ": " + e.getMessage());
+            return false;
+        } catch (Exception e) {
+            System.err.println("Unexpected error checking shop " + shop.getId() + ": " + e.getMessage());
+            e.printStackTrace();
+            return false;
+        }
+    }
+    
+    
     
     
 
@@ -447,4 +574,35 @@ public class WomenProductService {
 
     	    return toDTO(product); // ✅ THIS includes ShopSummaryDTO
     	}
+       
+       
+       
+       
+       private boolean isShopOpen(LocalTime opensAt, LocalTime closesAt) {
+
+   	    if (opensAt == null || closesAt == null) {
+   	        return false;
+   	    }
+
+   	    LocalTime now = LocalTime.now(ZoneId.of("Asia/Kolkata"));
+
+   	    // Normal same-day shop (09:00 → 18:00)
+   	    if (closesAt.isAfter(opensAt)) {
+   	        return !now.isBefore(opensAt) && !now.isAfter(closesAt);
+   	    }
+
+   	    // Overnight shop (20:00 → 02:00)
+   	    return !now.isBefore(opensAt) || !now.isAfter(closesAt);
+   	}
+
+
+      // ===================== ADDRESS HELPERS =====================
+      private String extractCity(String address) {
+          if (address == null || address.isBlank()) return null;
+          return address;
+      }
+
+      private String extractPincode(String address) {
+          return null;
+      }
 }

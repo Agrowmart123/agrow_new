@@ -1,13 +1,17 @@
 package com.agrowmart.controller;
 
+import com.agrowmart.admin_seller_management.enums.AccountStatus;
 import com.agrowmart.dto.auth.*;
 import com.agrowmart.dto.auth.shop.ShopRequest;
 import com.agrowmart.entity.Shop;
 import com.agrowmart.entity.User;
+import com.agrowmart.exception.AuthExceptions.AuthenticationFailedException;
 import com.agrowmart.service.AuthService;
 import com.agrowmart.service.ShopService;
 
 import jakarta.validation.Valid;
+
+import org.apache.tomcat.util.http.fileupload.FileUploadException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -76,7 +80,8 @@ public class AuthController {
             @RequestPart(value = "aadhaarImage", required = false) MultipartFile aadhaarImage,
             @RequestPart(value = "panImage", required = false) MultipartFile panImage,
             @RequestPart(value = "udyamRegistrationImage", required = false) MultipartFile udyamRegistrationImage,
-
+            @RequestPart(value = "kycConsentGiven", required = true)
+            String kycConsentGivenStr,  // ← NEW required field
             // ── Shop fields (all optional) ────────────────────────────────────
             @RequestPart(value = "shopName", required = false) String shopName,
             @RequestPart(value = "shopType", required = false) String shopType,
@@ -98,7 +103,31 @@ public class AuthController {
         if (currentUser == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
+     // ── Safe parsing of consent ────────────────────────────────────────
+        boolean kycConsentGiven = false;
 
+        if (kycConsentGivenStr != null) {
+            String cleaned = kycConsentGivenStr.trim().toLowerCase();
+
+            // Accept common true values
+            if ("true".equals(cleaned) || 
+                "1".equals(cleaned) || 
+                "yes".equals(cleaned) || 
+                "on".equals(cleaned)) {
+                kycConsentGiven = true;
+            }
+            // Explicitly reject false values if you want (optional)
+            // else if ("false".equals(cleaned) || "0".equals(cleaned) || "no".equals(cleaned)) {
+            //     kycConsentGiven = false;
+            // }
+        }
+
+        if (!kycConsentGiven) {
+            throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "You must confirm that the submitted documents are genuine and belong to you."
+            );
+        }
         // Build DTO for profile update
         CompleteProfileRequest profileReq = new CompleteProfileRequest(
                 businessName, address, city, state, country, postalCode,
@@ -106,6 +135,7 @@ public class AuthController {
                 gstCertificateNumber, tradeLicenseNumber, fssaiLicenseNumber,
                 bankName, accountHolderName, bankAccountNumber, ifscCode, upiId,
                 fssaiLicenseFile, photo, aadhaarImage, panImage, udyamRegistrationImage,
+                kycConsentGiven,
 
                 // Shop fields passed to record
                 shopName, shopType, shopAddress, workingHoursJson, shopDescription,
@@ -173,7 +203,7 @@ public class AuthController {
             @RequestPart(value = "aadhaarImage", required = false) MultipartFile aadhaarImage,
             @RequestPart(value = "panImage", required = false) MultipartFile panImage,
             @RequestPart(value = "udyamRegistrationImage", required = false) MultipartFile udyamRegistrationImage,
-            @AuthenticationPrincipal User currentUser) {
+            @AuthenticationPrincipal User currentUser) throws FileUploadException {
 
         if (currentUser == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
@@ -254,10 +284,9 @@ public class AuthController {
     // 6. Get Current User (UPDATED with percentage and onlineStatus)
     @GetMapping("/me")
     public ResponseEntity<MeResponse> me(@AuthenticationPrincipal User user) {
-        if (user == null) {
-            return ResponseEntity.status(401).build();
+    	if (user == null) {
+            throw new AuthenticationFailedException("Not authenticated");
         }
-
         int percentage = authService.calculateProfileCompletion(user);
         boolean isProfileCompleted = "YES".equalsIgnoreCase(user.getProfileCompleted());
 
@@ -367,7 +396,7 @@ public class AuthController {
     @PostMapping(value = "/upload-photo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<String> uploadPhoto(
             @RequestParam("photo") MultipartFile file,
-            @AuthenticationPrincipal User user) {
+            @AuthenticationPrincipal User user) throws FileUploadException {
         if (user == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
@@ -378,29 +407,89 @@ public class AuthController {
     // ──────────────────────────────────────────────
     // 10. Update Online/Offline Status (Vendor only)
     // ──────────────────────────────────────────────
+//    @PutMapping("/status")
+//    public ResponseEntity<String> updateStatus(
+//            @RequestBody Map<String, String> body,
+//            @AuthenticationPrincipal User user) {
+//        if (user == null) {
+//            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+//        }
+//        if (!"YES".equalsIgnoreCase(user.getProfileCompleted())) {
+//            return ResponseEntity.badRequest().body("Please complete your profile first");
+//        }
+//
+//        String newStatus = body.get("status");
+//        if (newStatus == null || (!"ONLINE".equalsIgnoreCase(newStatus) && !"OFFLINE".equalsIgnoreCase(newStatus))) {
+//            return ResponseEntity.badRequest().body("Status must be 'ONLINE' or 'OFFLINE'");
+//        }
+//
+//        user.setOnlineStatus(newStatus.toUpperCase());
+//        authService.save(user);
+//        return ResponseEntity.ok(user.getOnlineStatus());
+//    }
+//    
+//    
+//   
+    
+    
+    
+    
     @PutMapping("/status")
-    public ResponseEntity<String> updateStatus(
+    public ResponseEntity<?> updateOnlineStatus(
             @RequestBody Map<String, String> body,
             @AuthenticationPrincipal User user) {
+
         if (user == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-        if (!"YES".equalsIgnoreCase(user.getProfileCompleted())) {
-            return ResponseEntity.badRequest().body("Please complete your profile first");
+            return ResponseEntity.status(401).body("Unauthorized");
         }
 
         String newStatus = body.get("status");
-        if (newStatus == null || (!"ONLINE".equalsIgnoreCase(newStatus) && !"OFFLINE".equalsIgnoreCase(newStatus))) {
-            return ResponseEntity.badRequest().body("Status must be 'ONLINE' or 'OFFLINE'");
+        if (newStatus == null) {
+            return ResponseEntity.badRequest().body("status field is required");
         }
 
-        user.setOnlineStatus(newStatus.toUpperCase());
-        authService.save(user);
-        return ResponseEntity.ok(user.getOnlineStatus());
+        String requested = newStatus.trim().toUpperCase();
+        if (!"ONLINE".equals(requested) && !"OFFLINE".equals(requested)) {
+            return ResponseEntity.badRequest().body("Status must be ONLINE or OFFLINE");
+        }
+
+        // ─── Very important validations ─────────────────────────────────────
+        if ("ONLINE".equals(requested)) {
+
+            // 1. Profile must be completed
+            if (!"YES".equalsIgnoreCase(user.getProfileCompleted())) {
+                return ResponseEntity.badRequest()
+                        .body("Please complete your profile first");
+            }
+
+            // 2. Admin must have approved the account
+            if (user.getAccountStatus() != AccountStatus.APPROVED) {
+                String msg = switch (user.getAccountStatus()) {
+                    case PENDING  -> "Your account is still under review. Please wait for admin approval.";
+                    case REJECTED -> "Your account was rejected. Reason: " + user.getStatusReason();
+                    case BLOCKED  -> "Your account is blocked. Contact support.";
+                    default       -> "Your account is not approved yet.";
+                };
+                return ResponseEntity.status(403).body(msg);
+            }
+
+            // 3. (Strongly recommended) Shop must be approved
+            Shop shop = user.getShop();
+            if (shop == null || !shop.isApproved()) {
+                return ResponseEntity.status(403)
+                        .body("Your shop must be approved by admin before going online.");
+            }
+        }
+
+        // If we reached here → allowed
+        user.setOnlineStatus(requested);
+        authService.save(user);   // or authService.save(user)
+
+        return ResponseEntity.ok(Map.of(
+                "status", user.getOnlineStatus(),
+                "message", "Status updated successfully"
+        ));
     }
-    
-    
-   
     
     
  // In AuthController    

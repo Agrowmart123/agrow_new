@@ -1,9 +1,11 @@
 package com.agrowmart.dto.auth.order;
 
-
+import java.math.BigDecimal;
 
 public record PaymentResponse(
     String razorpayOrderId,
-    double amount,
+    BigDecimal amount,
     String currency
-) {}
+) {
+
+}

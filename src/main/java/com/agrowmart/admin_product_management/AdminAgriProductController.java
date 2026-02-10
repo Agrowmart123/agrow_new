@@ -30,6 +30,15 @@ public class AdminAgriProductController {
     
     @Autowired
     private AdminAgriProductService adminService;
+    
+ // View product details by ID (Admin)
+    @GetMapping("/{id}")
+    public ResponseEntity<PendingAgriProductDTO> getProductById(@PathVariable Long id) {
+        BaseAgriProduct product = adminService.getProductById(id);
+        PendingAgriProductDTO dto = convertToPendingDto(product);
+        return ResponseEntity.ok(dto);
+    }
+
 
     // Get all pending products for approval
     @GetMapping("/pending")
@@ -148,11 +157,16 @@ public class AdminAgriProductController {
                 product.getAgrilicenseNumber(),
                 product.getAgrilicenseType(),
                 product.getAgribatchNumber(),
+
+                product.getAgriImageUrls(),   // ✅ FIXED
+                product.getCreatedAt(),       // ✅ FIXED
+
                 product.getAgrimanufacturerName(),
                 product.getAgrimanufacturingDate(),
                 product.getAgriexpiryDate(),
                 product.getApprovalStatus(),
                 product.getRejectionReason(),
+
                 new AgriVendorInfoDTO(
                         product.getVendor().getId(),
                         product.getVendor().getName(),
@@ -162,14 +176,30 @@ public class AdminAgriProductController {
                         product.getVendor().getCity(),
                         product.getVendor().getState()
                 ),
-                fertilizerType, nutrientComposition, fcoNumber,
-                seedscropType, seedsvariety, seedClass,
-                seedsgerminationPercentage, seedsphysicalPurityPercentage, seedslotNumber,
-                pesticideType, pesticideActiveIngredient, pesticideToxicity,
-                pesticideCibrcNumber, pesticideFormulation,
-                pipeType, pipeSize, pipeLength, pipeBisNumber
+
+                fertilizerType,
+                nutrientComposition,
+                fcoNumber,
+
+                seedscropType,
+                seedsvariety,
+                seedClass,
+                seedsgerminationPercentage,
+                seedsphysicalPurityPercentage,
+                seedslotNumber,
+
+                pesticideType,
+                pesticideActiveIngredient,
+                pesticideToxicity,
+                pesticideCibrcNumber,
+                pesticideFormulation,
+
+                pipeType,
+                pipeSize,
+                pipeLength,
+                pipeBisNumber
         );
-    }
+
 }
 
 class RejectProductRequest {
@@ -177,4 +207,5 @@ class RejectProductRequest {
 
     public String getReason() { return reason; }
     public void setReason(String reason) { this.reason = reason; }
+}
 }

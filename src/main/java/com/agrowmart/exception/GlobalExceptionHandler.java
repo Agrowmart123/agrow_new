@@ -1,5 +1,11 @@
 package com.agrowmart.exception;
 
+import com.agrowmart.exception.AuthExceptions.AuthenticationFailedException;
+import com.agrowmart.exception.AuthExceptions.BusinessValidationException;
+import com.agrowmart.exception.AuthExceptions.CloudinaryOperationException;
+import com.agrowmart.exception.AuthExceptions.DuplicateResourceException;
+import com.agrowmart.exception.AuthExceptions.FileUploadException;
+import com.agrowmart.exception.AuthExceptions.InvalidOtpException;
 import com.agrowmart.exception.ForbiddenException;
 import com.agrowmart.exception.ResourceNotFoundException;
 import com.agrowmart.exception.SubscriptionLimitExceededException;
@@ -152,6 +158,133 @@ public class GlobalExceptionHandler {
 
         return new ResponseEntity<>(body, HttpStatus.PAYLOAD_TOO_LARGE);
     }
+    
+ // ──────────────────────────────────────────────
+//  Custom business & auth exceptions – 400 / 409 / 401 family
+// ──────────────────────────────────────────────
 
+// 409 Conflict – duplicate email/phone
+@ExceptionHandler(DuplicateResourceException.class)
+public ResponseEntity<Object> handleDuplicateResource(
+        DuplicateResourceException ex,
+        WebRequest request) {
+
+    log.warn("Duplicate resource attempt: {}", ex.getMessage());
+
+    Map<String, Object> body = new HashMap<>();
+    body.put("timestamp", LocalDateTime.now());
+    body.put("status", HttpStatus.CONFLICT.value());
+    body.put("error", "Conflict");
+    body.put("message", ex.getMessage());           // ← "This email is already registered."
+    body.put("path", request.getDescription(false));
+
+    return new ResponseEntity<>(body, HttpStatus.CONFLICT);
+}
+
+// 400 – business rule violation / missing required field / invalid format
+@ExceptionHandler(BusinessValidationException.class)
+public ResponseEntity<Object> handleBusinessValidation(
+        BusinessValidationException ex,
+        WebRequest request) {
+
+    log.warn("Business validation failed: {}", ex.getMessage());
+
+    Map<String, Object> body = new HashMap<>();
+    body.put("timestamp", LocalDateTime.now());
+    body.put("status", HttpStatus.BAD_REQUEST.value());
+    body.put("error", "Bad Request");
+    body.put("message", ex.getMessage());
+    body.put("path", request.getDescription(false));
+
+    return new ResponseEntity<>(body, HttpStatus.BAD_REQUEST);
+}
+
+// 401 Unauthorized – login / credential failures
+@ExceptionHandler(AuthenticationFailedException.class)
+public ResponseEntity<Object> handleAuthenticationFailed(
+        AuthenticationFailedException ex,
+        WebRequest request) {
+
+    log.warn("Authentication failed: {}", ex.getMessage());
+
+    Map<String, Object> body = new HashMap<>();
+    body.put("timestamp", LocalDateTime.now());
+    body.put("status", HttpStatus.UNAUTHORIZED.value());
+    body.put("error", "Unauthorized");
+    body.put("message", ex.getMessage());           // "Invalid email/phone or password"
+    body.put("path", request.getDescription(false));
+
+    return new ResponseEntity<>(body, HttpStatus.UNAUTHORIZED);
+}
+
+// 400 – OTP problems
+@ExceptionHandler(InvalidOtpException.class)
+public ResponseEntity<Object> handleInvalidOtp(
+        InvalidOtpException ex,
+        WebRequest request) {
+
+    log.warn("Invalid OTP attempt: {}", ex.getMessage());
+
+    Map<String, Object> body = new HashMap<>();
+    body.put("timestamp", LocalDateTime.now());
+    body.put("status", HttpStatus.BAD_REQUEST.value());
+    body.put("error", "Invalid OTP");
+    body.put("message", ex.getMessage());
+    body.put("path", request.getDescription(false));
+
+    return new ResponseEntity<>(body, HttpStatus.BAD_REQUEST);
+}
+
+// 400 / 500 family – file upload business logic errors
+@ExceptionHandler(FileUploadException.class)
+public ResponseEntity<Object> handleFileUploadException(
+        FileUploadException ex,
+        WebRequest request) {
+
+    log.error("File upload problem", ex);
+
+    Map<String, Object> body = new HashMap<>();
+    body.put("timestamp", LocalDateTime.now());
+    body.put("status", HttpStatus.BAD_REQUEST.value());
+    body.put("error", "File Upload Error");
+    body.put("message", ex.getMessage());
+    body.put("path", request.getDescription(false));
+
+    return new ResponseEntity<>(body, HttpStatus.BAD_REQUEST);
+}
+//──────────────────────────────────────────────
+//Cloudinary / Photo upload specific errors
+//──────────────────────────────────────────────
+
+//500 – Cloudinary failure (upload/delete)
+@ExceptionHandler(CloudinaryOperationException.class)
+public ResponseEntity<Object> handleCloudinaryOperation(
+     CloudinaryOperationException ex,
+     WebRequest request) {
+ log.error("Cloudinary operation failed", ex);
+ Map<String, Object> body = new HashMap<>();
+ body.put("timestamp", LocalDateTime.now());
+ body.put("status", HttpStatus.INTERNAL_SERVER_ERROR.value());
+ body.put("error", "Image Processing Error");
+ body.put("message", "Failed to process image with Cloudinary: " + ex.getMessage());
+ body.put("path", request.getDescription(false));
+ return new ResponseEntity<>(body, HttpStatus.INTERNAL_SERVER_ERROR);
+}
+
+//General multipart/form-data parsing issues (wrong format, missing boundary, etc.)
+@ExceptionHandler({org.springframework.web.multipart.MultipartException.class,
+                org.springframework.http.converter.HttpMessageNotReadableException.class})
+public ResponseEntity<Object> handleMultipartErrors(
+     Exception ex,
+     WebRequest request) {
+ log.warn("Multipart request error", ex);
+ Map<String, Object> body = new HashMap<>();
+ body.put("timestamp", LocalDateTime.now());
+ body.put("status", HttpStatus.BAD_REQUEST.value());
+ body.put("error", "Invalid Form Data");
+ body.put("message", "Invalid multipart/form-data request. Make sure you're sending form-data with correct fields.");
+ body.put("path", request.getDescription(false));
+ return new ResponseEntity<>(body, HttpStatus.BAD_REQUEST);
+}
     // Optional: Add more custom exceptions if you have them
 }

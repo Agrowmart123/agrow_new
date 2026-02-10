@@ -2,6 +2,7 @@ package com.agrowmart.entity.AgriProduct;
 
 import jakarta.persistence.*;
 
+
 import com.agrowmart.entity.ApprovalStatus;
 import com.agrowmart.entity.User;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -11,11 +12,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+
 @Entity
 @Table(name = "agri_products")
+@EntityListeners(AuditingEntityListener.class)
 @Inheritance(strategy = InheritanceType.JOINED)
 @DiscriminatorColumn(name = "Agricategory", discriminatorType = DiscriminatorType.STRING)
 public abstract class BaseAgriProduct {
@@ -81,6 +87,16 @@ public abstract class BaseAgriProduct {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "AgrivendorId", nullable = false)
     private User vendor;
+    
+    @CreatedDate
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+    public LocalDateTime getCreatedAt() {
+		return createdAt;
+	}
+	public void setCreatedAt(LocalDateTime createdAt) {
+		this.createdAt = createdAt;
+	}
 
     // Jackson ObjectMapper – thread-safe if properly configured
     private static final ObjectMapper mapper = new ObjectMapper();

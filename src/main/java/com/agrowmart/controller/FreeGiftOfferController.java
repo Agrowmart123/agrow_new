@@ -4,6 +4,8 @@ import com.agrowmart.dto.auth.offer.FreeGiftRequestDTO;
 import com.agrowmart.dto.auth.offer.FreeGiftResponseDTO;
 import com.agrowmart.dto.auth.offer.OfferStatusUpdateDTO;
 import com.agrowmart.entity.User;
+import com.agrowmart.exception.AuthExceptions.AuthenticationFailedException;
+import com.agrowmart.exception.AuthExceptions.BusinessValidationException;
 import com.agrowmart.service.OfferService;
 import org.springframework.http.*;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -34,10 +36,15 @@ public class FreeGiftOfferController {
             @RequestParam("free") Boolean free,
             @RequestParam("minPurchaseAmount") BigDecimal minPurchaseAmount,
             @RequestParam("image") MultipartFile image) {  // ← Remove "value=" and "required=false"
+    	if (vendor == null) {
+            throw new AuthenticationFailedException("Vendor must be authenticated");
+        }
 
         if (free == null) {
-            throw new IllegalArgumentException("The 'free' field is required (true or false)");
+            throw new BusinessValidationException("The 'free' field is required (true or false)");
         }
+
+       
 
         FreeGiftRequestDTO dto = new FreeGiftRequestDTO(
                 productName, description, quantity, originalPrice, offerPrice, free, minPurchaseAmount
@@ -65,6 +72,7 @@ public class FreeGiftOfferController {
             @RequestParam("minPurchaseAmount") BigDecimal minPurchaseAmount,
             @RequestParam(value = "image") MultipartFile image) {
 
+    	
         FreeGiftRequestDTO dto = new FreeGiftRequestDTO(
                 productName,
                 description,
@@ -98,7 +106,7 @@ public class FreeGiftOfferController {
             @RequestBody OfferStatusUpdateDTO dto) {
 
         if (dto.active() == null) {
-            throw new IllegalArgumentException("'active' field is required");
+            throw new BusinessValidationException("'active' field is required");
         }
 
         FreeGiftResponseDTO updated = offerService.updateFreeGiftOfferStatus(vendor, id, dto.active());

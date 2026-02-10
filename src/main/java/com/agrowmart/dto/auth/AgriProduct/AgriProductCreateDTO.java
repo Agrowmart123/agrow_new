@@ -3,6 +3,7 @@ package com.agrowmart.dto.auth.AgriProduct;
 import jakarta.validation.constraints.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 import org.springframework.web.multipart.MultipartFile;
@@ -38,6 +39,7 @@ public record AgriProductCreateDTO(
     String AgrimanufacturerName,
     LocalDate AgrimanufacturingDate,
     LocalDate AgriexpiryDate,
+    LocalDateTime createdAt, 
     
     
 

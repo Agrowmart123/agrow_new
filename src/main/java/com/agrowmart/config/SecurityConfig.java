@@ -14,16 +14,20 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-
+import com.agrowmart.config.AdminJwtAuthenticationFilter;
 import java.util.List;
 
 @Configuration
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtFilter;
+    private final AdminJwtAuthenticationFilter AdminJwtAuthenticationFilter;
+    
 
-    public SecurityConfig(JwtAuthenticationFilter jwtFilter) {
+    public SecurityConfig(JwtAuthenticationFilter jwtFilter,
+    		 AdminJwtAuthenticationFilter AdminJwtAuthenticationFilter) {
         this.jwtFilter = jwtFilter;
+        this.AdminJwtAuthenticationFilter=AdminJwtAuthenticationFilter;
     }
 
     @Bean
@@ -51,6 +55,7 @@ public class SecurityConfig {
         source.registerCorsConfiguration("/**", config);
         return source;
     }
+    
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -58,17 +63,20 @@ public class SecurityConfig {
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .csrf(csrf -> csrf.disable())
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            
             .authorizeHttpRequests(auth -> auth
                 // ──────────────────────────────────────────────
                 // 1. COMPLETELY PUBLIC ENDPOINTS (No auth required)
                 // ──────────────────────────────────────────────
                 .requestMatchers(
+                		"/api/admin/auth/**",          
                         "/api/auth/**",                     // login, register, OTP, forgot password
                         "/api/customer/auth/**",            // customer login/register
                         "/api/farmer/**",                   // farmer register
                         "/api/social/**",
                         "/api/public/**",                   // public products, top vendors, etc.
                         "/api/products/search",
+                        "/api/shops/search",
                         "/api/doctors/all",
                         "/api/doctors/{id}",
                         "/api/notification/**",
@@ -138,11 +146,18 @@ public class SecurityConfig {
                 // Doctor protected routes
                 .requestMatchers("/api/doctors/profile/**").hasAuthority("DOCTOR")
 
+                
+                
+                .requestMatchers("/api/admin/**").hasAnyAuthority("ADMIN", "SUPER_ADMIN")
+                .requestMatchers("/api/v1/super/**").hasAuthority("SUPER_ADMIN")
                 // All other endpoints require authentication
                 .anyRequest().authenticated()
             )
-            .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
-
+//            .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
+//             .addFilterBefore(AdminJwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+     // Add BOTH filters
+        .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)                // normal user/vendor filter
+        .addFilterBefore(AdminJwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);  // admin filter
         return http.build();
     }
 }

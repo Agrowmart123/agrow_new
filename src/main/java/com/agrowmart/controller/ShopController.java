@@ -3,9 +3,12 @@ package com.agrowmart.controller;
 
 import com.agrowmart.dto.auth.shop.ShopRequest;
 import com.agrowmart.dto.auth.shop.ShopResponse;
+import com.agrowmart.dto.auth.shop.ShopSearchDTO;
+import com.agrowmart.dto.auth.shop.ShopSummaryDTO;
 import com.agrowmart.entity.User;
 import com.agrowmart.service.ShopService;
 
+import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -142,5 +145,10 @@ public class ShopController {
      ));
  }
 
+ 
+ @PostMapping("/search")
+ public Page<ShopSummaryDTO> search(@RequestBody ShopSearchDTO filter) {
+     return shopService.searchShops(filter);
+ }
  
 }

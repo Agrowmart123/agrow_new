@@ -27,6 +27,12 @@ public class AdminAgriProductService {
     @Autowired
     private AgriProductService agriProductService;
 
+    public BaseAgriProduct getProductById(Long id) {
+        return agriProductRepository.findById(id)
+                .orElseThrow(() ->
+                        new ResponseStatusException(HttpStatus.NOT_FOUND, "Product not found"));
+    }
+
     // Get all pending products
     public List<BaseAgriProduct> getPendingProducts() {
         return agriProductRepository.findAllPending();

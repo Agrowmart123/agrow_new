@@ -4,13 +4,17 @@ import com.agrowmart.dto.auth.offer.*;
 import com.agrowmart.entity.User;
 import com.agrowmart.entity.order.Offer;
 import com.agrowmart.entity.order.OfferPrice;
+import com.agrowmart.exception.AuthExceptions.AuthenticationFailedException;
+import com.agrowmart.exception.AuthExceptions.BusinessValidationException;
+import com.agrowmart.exception.AuthExceptions.FileUploadException;
 import com.agrowmart.exception.ForbiddenException;
 import com.agrowmart.exception.ResourceNotFoundException;
 import com.agrowmart.repository.OfferRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
-
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -18,7 +22,7 @@ import java.util.List;
 
 @Service
 public class OfferServiceImpl implements OfferService {
-
+	private static final Logger log = LoggerFactory.getLogger(OfferServiceImpl.class);
     private final OfferRepository offerRepository;
     private final CloudinaryService cloudinaryService;
 
@@ -35,6 +39,9 @@ public class OfferServiceImpl implements OfferService {
     @Override
     @Transactional
     public OfferResponseDTO createOffer(User vendor, OfferRequestDTO dto) {
+    	if (vendor == null) {
+            throw new AuthenticationFailedException("Vendor must be authenticated to create offer");
+        }
 
         Offer offer = new Offer();
         mapRegularOffer(dto, offer, vendor);
@@ -45,6 +52,9 @@ public class OfferServiceImpl implements OfferService {
 
     @Override
     public List<OfferResponseDTO> getMyOffers(User vendor) {
+    	if (vendor == null) {
+            throw new AuthenticationFailedException("Vendor must be authenticated");
+        }
         return offerRepository.findByMerchantIdAndIsActiveTrue(vendor.getId())
                 .stream()
                 .filter(o -> o.getDiscountType() != Offer.DiscountType.FREE_PRODUCT)
@@ -72,19 +82,24 @@ public class OfferServiceImpl implements OfferService {
     @Transactional
     public FreeGiftResponseDTO createFreeGiftOffer(User vendor, FreeGiftRequestDTO dto, MultipartFile image) {
 
+    	if (vendor == null) {
+            throw new AuthenticationFailedException("Vendor must be authenticated to create free gift offer");
+        }
         validateFreeGiftPrice(dto.originalPrice(), dto.offerPrice(), dto.free());
 
         if (image == null || image.isEmpty()) {
-            throw new IllegalArgumentException("Gift image is required");
+            throw new BusinessValidationException("Gift image is required for free gift offer");
         }
 
-        String imageUrl = null;
-		try {
-			imageUrl = cloudinaryService.upload(image);
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
+        String imageUrl;
+        try {
+            imageUrl = cloudinaryService.upload(image);
+        } catch (FileUploadException e) {
+            throw e; // already meaningful from CloudinaryService
+        } catch (Exception e) {
+            log.error("Unexpected error uploading free gift image for vendor {}", vendor.getId(), e);
+            throw new FileUploadException("Failed to upload gift image", e);
+        }
 
         Offer offer = new Offer();
         offer.setMerchant(vendor);
@@ -117,6 +132,9 @@ public class OfferServiceImpl implements OfferService {
     
     @Override
     public List<FreeGiftResponseDTO> getMyFreeGiftOffers(User vendor) {
+    	if (vendor == null) {
+            throw new AuthenticationFailedException("Vendor must be authenticated");
+        }
         return offerRepository.findByMerchantIdAndIsActiveTrue(vendor.getId())
                 .stream()
                 .filter(o -> o.getDiscountType() == Offer.DiscountType.FREE_PRODUCT)
@@ -143,12 +161,15 @@ public class OfferServiceImpl implements OfferService {
         offer.setMinPurchaseAmount(dto.minPurchaseAmount());
         offer.setFreeGiftOffer(dto.free());
 
-        // Handle image update (only if new image provided)
+     // Handle image update (optional)
         if (image != null && !image.isEmpty()) {
             try {
                 offer.setFreeProductImageUrl(cloudinaryService.upload(image));
-            } catch (IOException e) {
-                throw new RuntimeException("Image upload failed", e);
+            } catch (FileUploadException e) {
+                throw e;
+            } catch (Exception e) {
+                log.error("Unexpected error updating free gift image for offer {}", id, e);
+                throw new FileUploadException("Failed to update gift image", e);
             }
         }
 
@@ -280,52 +301,51 @@ public class OfferServiceImpl implements OfferService {
     @Override
     @Transactional
     public void deactivate(User vendor, Long id) {
+        if (vendor == null) {
+            throw new AuthenticationFailedException("Vendor must be authenticated");
+        }
+
         Offer offer = offerRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Offer not found with id: " + id));
 
-        // 1. Ownership check (very important!)
         if (!offer.getMerchant().getId().equals(vendor.getId())) {
-            throw new ForbiddenException("You can only delete your own offers");
+            throw new ForbiddenException("You can only deactivate your own offers");
         }
 
-        // 2. Optional: Prevent deleting active offers (recommended)
-        if (offer.isActive()) {
-            throw new IllegalStateException("Cannot delete an active offer. Deactivate it first.");
+        if (!offer.isActive()) {
+            throw new BusinessValidationException("Offer is already deactivated");
         }
 
-        // 3. Optional but strongly recommended: Prevent deleting used offers
-        //     (add this query to OfferUsageRepository if not present)
-        // boolean wasUsed = offerUsageRepository.existsByOffer(offer);
-        // if (wasUsed) {
-        //     throw new IllegalStateException("Cannot delete offer that was already used by customers");
-        // }
-
-        // 4. Real delete from database
-        offerRepository.delete(offer);
-
-        // Optional: log it
-        // log.info("Offer {} permanently deleted by vendor {}", id, vendor.getId());
+        offer.setActive(false);
+        offerRepository.save(offer);
+        // Optional: log.info("Offer {} deactivated by vendor {}", id, vendor.getId());
     }
-
+    
+    
     @Override
     @Transactional
     public void deactivateFreeGiftOffer(User vendor, Long id) {
+        if (vendor == null) {
+            throw new AuthenticationFailedException("Vendor must be authenticated");
+        }
+
         Offer offer = offerRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Free gift offer not found with id: " + id));
 
         if (!offer.getMerchant().getId().equals(vendor.getId())) {
-            throw new ForbiddenException("Not authorized to delete this free gift offer");
+            throw new ForbiddenException("You can only deactivate your own free gift offers");
         }
 
         if (!offer.isFreeGiftOffer()) {
-            throw new IllegalStateException("This is not a free gift type offer");
+            throw new BusinessValidationException("This is not a free gift type offer");
         }
 
-        if (offer.isActive()) {
-            throw new IllegalStateException("Cannot delete active free gift offer. Deactivate first.");
+        if (!offer.isActive()) {
+            throw new BusinessValidationException("Free gift offer is already deactivated");
         }
 
-        offerRepository.delete(offer);
+        offer.setActive(false);
+        offerRepository.save(offer);
     }
 //------------   
     

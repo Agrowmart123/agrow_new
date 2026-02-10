@@ -1,103 +1,7 @@
-//
-//package com.agrowmart.util;
-//
-//import io.jsonwebtoken.Claims;
-//import io.jsonwebtoken.Jwts;
-//import io.jsonwebtoken.security.Keys;
-//import org.springframework.beans.factory.annotation.Value;
-//import org.springframework.stereotype.Component;
-//
-//import com.agrowmart.entity.User;
-//
-//import javax.crypto.SecretKey;
-//import java.util.Date;
-//
-//@Component
-//public class JwtUtil {
-//
-//    @Value("${jwt.secret}")
-//    private String secret;
-//
-//    @Value("${jwt.expiration-ms}")
-//    private long expirationMs;
-//
-//    private SecretKey getSigningKey() {
-//        return Keys.hmacShaKeyFor(secret.getBytes());
-//    }
-//
-//    /** Generates a JWT for the given User entity */
-//    public String generateToken(User user) {
-//        return Jwts.builder()
-//        		.setSubject(String.valueOf(user.getId()))
-//                .setSubject(user.getEmail())               // subject = email (fallback handled in JwtService)
-//                .claim("userId", user.getId())
-//                .claim("role", user.getRole().getName())
-//                .setIssuedAt(new Date())
-//                .setExpiration(new Date(System.currentTimeMillis() + expirationMs))
-//                .signWith(getSigningKey())
-//                .compact();
-//    }
-//
-//    /** Parses and returns all claims */
-//    public Claims extractAllClaims(String token) {
-//        return Jwts.parserBuilder()
-//                .setSigningKey(getSigningKey())
-//                .build()
-//                .parseClaimsJws(token)
-//                .getBody();
-//    }
-//
-//    public String extractSubject(String token) {
-//        return extractAllClaims(token).getSubject();
-//    }
-//
-//    public Long extractUserId(String token) {
-//        return extractAllClaims(token).get("userId", Long.class);
-//    }
-//
-//    public String extractRole(String token) {
-//        return extractAllClaims(token).get("role", String.class);
-//    }
-//
-//    public boolean isTokenExpired(String token) {
-//        return extractAllClaims(token).getExpiration().before(new Date());
-//    }
-//
-//    /** Validates token against the provided email (subject) */
-//    public boolean validateToken(String token, String email) {
-//        return email.equals(extractSubject(token)) && !isTokenExpired(token);
-//    }
-//    public boolean validateToken(String token, Long userId) {
-//        Long tokenUserId = extractUserId(token);
-//        return tokenUserId != null 
-//                && tokenUserId.equals(userId) 
-//                && !isTokenExpired(token);
-//    }
-//
-//    public String generateRefreshToken(Long userId) {
-//        return Jwts.builder()
-//            .setSubject(userId.toString())
-//            .setIssuedAt(new Date())
-//            .setExpiration(new Date(System.currentTimeMillis() + 7 * 24 * 60 * 60 * 1000)) // 7 days
-//            .signWith(getSigningKey())
-//            .compact();
-//    }
-//
-//    public String generateToken(Long userId) {
-//        return Jwts.builder()
-//            .claim("userId", userId)
-//            .setIssuedAt(new Date())
-//            .setExpiration(new Date(System.currentTimeMillis() + expirationMs))
-//            .signWith(getSigningKey())
-//            .compact();
-//    }
-//	
-//}
-
-// src/main/java/com/agrowmart/util/JwtUtil.java
 
 package com.agrowmart.util;
 
+import com.agrowmart.admin_seller_management.entity.Admin;
 import com.agrowmart.entity.User;
 import com.agrowmart.entity.customer.Customer;
 import io.jsonwebtoken.Claims;
@@ -187,5 +91,37 @@ public class JwtUtil {
     public boolean validateToken(String token, String email) {
         // Optional fallback if you ever store email as subject
         return !isTokenExpired(token);
+    }
+    
+    
+    
+   // Admin  Side 
+    
+    // ── Admin Token Support ──
+    public String generateTokenForAdmin(Admin admin) {
+        return Jwts.builder()
+                .claim("adminId", admin.getId())
+                .claim("role", admin.getRole().name())
+                .claim("type", "admin")
+                .setIssuedAt(new Date())
+                .setExpiration(new Date(System.currentTimeMillis() + expirationMs))
+                .signWith(getSigningKey())
+                .compact();
+    }
+
+    public boolean isAdminToken(String token) {
+        try {
+            return "admin".equals(extractAllClaims(token).get("type", String.class));
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public Long extractAdminId(String token) {
+        try {
+            return extractAllClaims(token).get("adminId", Long.class);
+        } catch (Exception e) {
+            return null;
+        }
     }
 }

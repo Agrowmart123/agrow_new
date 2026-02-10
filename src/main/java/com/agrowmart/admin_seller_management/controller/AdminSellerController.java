@@ -188,5 +188,10 @@ public class AdminSellerController {
         );
     }
 
+ // 🔥 NEW: Endpoint to see specific seller's products
+    @GetMapping("/{id}/products")
+    public ResponseEntity<ApiResponseDTO<?>> getVendorProducts(@PathVariable Long id) {
+        return ResponseEntity.ok(new ApiResponseDTO<>(true, "Vendor products fetched", sellerService.getProductsByVendorId(id)));
+    }
 
 }

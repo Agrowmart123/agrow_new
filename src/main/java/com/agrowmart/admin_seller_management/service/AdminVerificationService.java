@@ -2,6 +2,7 @@ package com.agrowmart.admin_seller_management.service;
 
 import com.agrowmart.admin_seller_management.dto.DocumentVerificationRequestDTO;
 import com.agrowmart.entity.User;
+import com.agrowmart.exception.AuthExceptions.BusinessValidationException;
 import com.agrowmart.admin_seller_management.enums.AccountStatus;
 import com.agrowmart.admin_seller_management.enums.RejectReason;
 import com.agrowmart.repository.UserRepository;
@@ -25,7 +26,7 @@ public class AdminVerificationService {
     public void approveVendor(Long vendorId) {
 
         User user = userRepository.findById(vendorId)
-                .orElseThrow(() -> new RuntimeException("Vendor not found"));
+                .orElseThrow(() -> new BusinessValidationException("Vendor not found with ID: " + vendorId));
 
         user.setAccountStatus(AccountStatus.APPROVED);
         user.setStatusReason("Approved by admin");
@@ -37,9 +38,11 @@ public class AdminVerificationService {
     @Transactional
     public void rejectVendor(Long vendorId, DocumentVerificationRequestDTO request) {
 
-        User user = userRepository.findById(vendorId)
-                .orElseThrow(() -> new RuntimeException("Vendor not found"));
 
+        User user = userRepository.findById(vendorId)
+                .orElseThrow(() -> new BusinessValidationException("Vendor not found with ID: " + vendorId));
+
+        
         user.setAccountStatus(AccountStatus.REJECTED);
 
         if (request.getRejectReason() == RejectReason.OTHER) {

@@ -1,6 +1,7 @@
 
 
 package com.agrowmart.service;
+import com.agrowmart.admin_seller_management.enums.AccountStatus;
 import com.agrowmart.dto.auth.*;
 
 import com.agrowmart.dto.auth.customer.CustomerRegisterRequest;
@@ -10,12 +11,18 @@ import com.agrowmart.entity.*;
 import com.agrowmart.entity.Product.ProductStatus;
 import com.agrowmart.enums.OtpPurpose;
 import com.agrowmart.enums.RoleName;
+import com.agrowmart.exception.AuthExceptions.AuthenticationFailedException;
+import com.agrowmart.exception.AuthExceptions.BusinessValidationException;
+import com.agrowmart.exception.AuthExceptions.DuplicateResourceException;
+import com.agrowmart.exception.AuthExceptions.InvalidOtpException;
 import com.agrowmart.repository.*;
 import com.agrowmart.util.InMemoryOtpStore;
 import com.agrowmart.util.RedisOtpStore;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.validation.constraints.NotBlank;
+
+import org.apache.tomcat.util.http.fileupload.FileUploadException;
 import org.springframework.beans.factory.annotation.*;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -99,9 +106,18 @@ public class AuthService {
         String email = r.email() != null ? r.email().trim().toLowerCase() : null; String phone = r.phone().trim();@NotBlank
         String password = r.password();
         String type = r.vendorType().trim().toUpperCase();
-        if (userRepo.existsByEmail(email)) throw new IllegalArgumentException("Email already taken");
+        
+        
+        
+        if (userRepo.existsByEmail(email)) {
+            throw new DuplicateResourceException("This email is already registered.");
+        }
+
         String normalizedPhone = normalizePhone(phone);
-        if (userRepo.existsByPhone(normalizedPhone)) throw new IllegalArgumentException("Phone already registered");
+        if (userRepo.existsByPhone(normalizedPhone)) {
+            throw new DuplicateResourceException("This phone number is already registered.");
+        }
+        
         Role role = roleRepo.findByName(type)
             .orElseGet(() -> roleRepo.save(new Role(type)));
         User user = new User();
@@ -114,6 +130,7 @@ public class AuthService {
         user.setProfileCompleted("NO");
         // NEW: Default onlineStatus to "OFFLINE"
         user.setOnlineStatus("OFFLINE");
+        user.setAccountStatus(AccountStatus.PENDING);   // ← ADD THIS
         return userRepo.save(user);
     }
    
@@ -122,7 +139,7 @@ public class AuthService {
    
    
     @Transactional
-    public User completeProfile(CompleteProfileRequest r, User user) {
+    public User completeProfile(CompleteProfileRequest r, User user) throws FileUploadException {
         // Trim & clean every string
         Optional.ofNullable(r.businessName()).ifPresent(v -> user.setBusinessName(v.trim()));
         Optional.ofNullable(r.address()).ifPresent(v -> user.setAddress(v.trim()));
@@ -156,13 +173,20 @@ public class AuthService {
             if (r.udyamRegistrationImage() != null && !r.udyamRegistrationImage().isEmpty()) {
                 user.setUdyamRegistrationImagePath(cloudinaryService.upload(r.udyamRegistrationImage()));
             }
+         // NEW: Save KYC consent
+            if (r.kycConsentGiven() != null && r.kycConsentGiven()) {
+                user.setKycConsentGiven(true);
+                user.setKycConsentGivenAt(LocalDateTime.now());
+            } else {
+                throw new IllegalArgumentException("KYC authenticity consent is required");
+            }
             
             if (r.fssaiLicenseFile() != null && !r.fssaiLicenseFile().isEmpty())
                 user.setFssaiLicensePath(cloudinaryService.upload(r.fssaiLicenseFile()));
             if (r.photo() != null && !r.photo().isEmpty())
                 user.setPhotoUrl(cloudinaryService.upload(r.photo()));
         } catch (Exception e) {
-            throw new RuntimeException("Upload failed: " + e.getMessage());
+            throw new FileUploadException("Upload failed: " + e.getMessage());
         }
         user.setProfileCompleted("YES");
         return userRepo.save(user);
@@ -243,7 +267,7 @@ public class AuthService {
         boolean valid = redisOtpStore.verifyOtp(normalizedPhone, req.code(), purpose);
 
         if (!valid) {
-            throw new IllegalArgumentException("Invalid or expired OTP");
+            throw new InvalidOtpException("Invalid or expired OTP");
         }
         
         // Only fetch user when needed
@@ -259,10 +283,10 @@ public class AuthService {
             User user = userRepo.findByPhone(normalizedPhone)
                     .orElseThrow(() -> new IllegalArgumentException("No account found with this phone number"));
             if (req.newPassword() == null || req.newPassword().trim().isEmpty()) {
-                throw new IllegalArgumentException("New password is required");
+                throw new BusinessValidationException("New password is required");
             }
             if (req.newPassword().trim().length() < 6) {
-                throw new IllegalArgumentException("New password must be at least 6 characters");
+                throw new BusinessValidationException("New password must be at least 6 characters");
             }
             user.setPasswordHash(encoder.encode(req.newPassword().trim()));
             userRepo.save(user);
@@ -272,7 +296,7 @@ public class AuthService {
     /* ------------------------------------------------- NORMALIZE PHONE ------------------------------------------------- */
     private String normalizePhone(String phone) {
         if (phone == null || phone.isBlank()) {
-            throw new IllegalArgumentException("Phone cannot be empty");
+            throw new BusinessValidationException("Phone cannot be empty");
         }
         String cleaned = phone.replaceAll("[^0-9]", "");
         if (cleaned.startsWith("91") && cleaned.length() > 10) {
@@ -281,7 +305,7 @@ public class AuthService {
             cleaned = cleaned.substring(1);
         }
         if (!cleaned.matches("^[6-9]\\d{9}$")) {
-            throw new IllegalArgumentException("Invalid phone number format");
+            throw new BusinessValidationException("Invalid phone number format");
         }
         return "+91" + cleaned;
     }
@@ -293,10 +317,16 @@ public class AuthService {
             String phone = normalizePhone(input);
             userOpt = userRepo.findByPhone(phone);
         }
-        User user = userOpt.orElseThrow(() -> new IllegalArgumentException("Invalid credentials"));
-        if (!encoder.matches(req.password(), user.getPasswordHash())) {
-            throw new IllegalArgumentException("Invalid credentials");
-        }
+        
+        
+        User user = userOpt.orElseThrow(() ->
+        new AuthenticationFailedException("Invalid email/phone or password")
+);
+
+if (!encoder.matches(req.password(), user.getPasswordHash())) {
+    throw new AuthenticationFailedException("Invalid email/phone or password");
+}
+        
         if (fcmTokenFromFrontend != null && !fcmTokenFromFrontend.trim().isEmpty()) {
             user.setFcmToken(fcmTokenFromFrontend.trim());
             userRepo.save(user);
@@ -313,7 +343,7 @@ public class AuthService {
    
  //---------------------------------------------------
     private String normalizePhoneTo10Digits(String phone) {
-        if (phone == null || phone.isBlank()) throw new IllegalArgumentException("Phone required");
+        if (phone == null || phone.isBlank()) throw new BusinessValidationException("Phone required");
         String cleaned = phone.replaceAll("[^0-9]", "");
         if (cleaned.startsWith("91") && cleaned.length() > 10) {
             cleaned = cleaned.substring(cleaned.length() - 10);
@@ -321,7 +351,7 @@ public class AuthService {
             cleaned = cleaned.substring(1);
         }
         if (!cleaned.matches("^[6-9]\\d{9}$")) {
-            throw new IllegalArgumentException("Invalid Indian mobile number");
+            throw new BusinessValidationException("Invalid Indian mobile number");
         }
         return cleaned;
     }
@@ -330,14 +360,14 @@ public class AuthService {
     public void forgotPassword(String phone) throws Exception {
         String normalized = normalizePhone(phone);
         if (!userRepo.existsByPhone(normalized)) {
-            throw new IllegalArgumentException("No account found with this phone number");
+            throw new AuthenticationFailedException("No account found with this phone number");
         }
         sendOtp(new OtpRequest(normalized, OtpPurpose.FORGOT_PASSWORD));
     }
     /* ------------------------------------------------- UPDATE PROFILE ------------------------------------------------- */
    
     @Transactional
-    public User updateProfile(UpdateProfileRequest r, User user) {
+    public User updateProfile(UpdateProfileRequest r, User user) throws FileUploadException {
         Optional.ofNullable(r.businessName()).filter(s -> !s.isBlank()).ifPresent(v -> user.setBusinessName(v.trim()));
         Optional.ofNullable(r.address()).filter(s -> !s.isBlank()).ifPresent(v -> user.setAddress(v.trim()));
         Optional.ofNullable(r.city()).filter(s -> !s.isBlank()).ifPresent(v -> user.setCity(v.trim()));
@@ -374,7 +404,7 @@ public class AuthService {
             if (r.photo() != null && !r.photo().isEmpty())
                 user.setPhotoUrl(cloudinaryService.upload(r.photo()));
         } catch (Exception e) {
-            throw new RuntimeException("Upload failed: " + e.getMessage());
+            throw new FileUploadException("Upload failed: " + e.getMessage());
         }
         user.setProfileCompleted("YES");
         return userRepo.save(user);
@@ -382,21 +412,21 @@ public class AuthService {
    
     //-------------------------------
     public User getCurrentUser(@AuthenticationPrincipal User currentUser) {
-        if (currentUser == null) throw new IllegalArgumentException("Invalid token");
+        if (currentUser == null) throw new BusinessValidationException("Invalid token");
         return userRepo.findById(currentUser.getId())
-                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+                .orElseThrow(() -> new BusinessValidationException("User not found"));
     }
   
     
     
     @Transactional
-    public String uploadProfilePhoto(MultipartFile file, User user) {
+    public String uploadProfilePhoto(MultipartFile file, User user) throws FileUploadException {
         if (file == null || file.isEmpty()) {
-            throw new IllegalArgumentException("Photo file is required");
+            throw new BusinessValidationException("Photo file is required");
         }
         String contentType = file.getContentType();
         if (contentType == null || !contentType.startsWith("image/")) {
-            throw new IllegalArgumentException("Only image files are allowed");
+            throw new BusinessValidationException("Only image files are allowed");
         }
         try {
             String photoUrl = cloudinaryService.upload(file);
@@ -404,7 +434,7 @@ public class AuthService {
             userRepo.save(user);
             return photoUrl;
         } catch (Exception e) {
-            throw new RuntimeException("Failed to upload photo: " + e.getMessage(), e);
+            throw new FileUploadException("Failed to upload photo: " + e.getMessage(), e);
         }
     }
     
@@ -416,8 +446,14 @@ public class AuthService {
     @Transactional
     public User registerFarmer(FarmerRegisterRequest r) {
         String phone = normalizePhone(r.phone());
-        if (userRepo.existsByEmail(r.email())) throw new IllegalArgumentException("Email already used");
-        if (userRepo.existsByPhone(phone)) throw new IllegalArgumentException("Phone already registered");
+       
+        if (userRepo.existsByEmail(r.email())) {
+            throw new DuplicateResourceException("This email is already registered");
+        }
+        if (userRepo.existsByPhone(phone)) {
+            throw new DuplicateResourceException("This phone number is already registered");
+        }
+        
         Role role = roleRepo.findByName("FARMER")
                 .orElseGet(() -> roleRepo.save(new Role("FARMER")));
         User user = new User();
@@ -435,7 +471,7 @@ public class AuthService {
     @Transactional
     public User updateFarmerFullProfile(FarmerProfileRequest r, User farmer) {
         FarmerProfile profile = farmerProfileRepo.findByUser(farmer)
-                .orElseThrow(() -> new IllegalArgumentException("Profile not found"));
+                .orElseThrow(() -> new BusinessValidationException("Profile not found"));
         profile.setState(r.state());
         profile.setBankName(r.bankName());
         profile.setAccountHolderName(r.accountHolderName());
@@ -451,7 +487,7 @@ public class AuthService {
     @Transactional
     public String uploadFarmerPhoto(MultipartFile file, User farmer) throws IOException {
         FarmerProfile profile = farmerProfileRepo.findByUser(farmer)
-                .orElseThrow(() -> new IllegalArgumentException("Profile not found"));
+                .orElseThrow(() -> new BusinessValidationException("Profile not found"));
         String url = cloudinaryService.upload(file);
         // Save profile or farmer as required
         farmerProfileRepo.save(profile);
@@ -525,11 +561,11 @@ public class AuthService {
     public void softDeleteVendor(User vendor, User performedBy) {
 
         if (vendor == null) {
-            throw new IllegalArgumentException("Vendor cannot be null");
+            throw new BusinessValidationException("Vendor cannot be null");
         }
 
         if (vendor.isDeleted()) {
-            throw new IllegalStateException("Vendor is already deleted");
+            throw new BusinessValidationException("Vendor is already deleted");
         }
 
         

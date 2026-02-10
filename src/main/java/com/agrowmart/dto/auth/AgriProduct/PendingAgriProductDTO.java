@@ -2,6 +2,8 @@ package com.agrowmart.dto.auth.AgriProduct;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
 
 import com.agrowmart.entity.AgriProduct.BaseAgriProduct;
 
@@ -17,6 +19,8 @@ public record PendingAgriProductDTO(
     String AgrilicenseNumber,
     String AgrilicenseType,
     String AgribatchNumber,
+    List<String> AgriimageUrl,   // ✅ image list
+    LocalDateTime createdAt,     // ✅ created time
     String AgrimanufacturerName,
     LocalDate AgrimanufacturingDate,
     LocalDate AgriexpiryDate,

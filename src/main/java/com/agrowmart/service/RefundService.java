@@ -3,6 +3,8 @@ package com.agrowmart.service;
 
 import com.agrowmart.entity.order.Order;
 import com.agrowmart.entity.order.Payment;
+import com.agrowmart.exception.AuthExceptions.AuthenticationFailedException;
+import com.agrowmart.exception.AuthExceptions.BusinessValidationException;
 import com.agrowmart.entity.User;
 import com.agrowmart.repository.OrderRepository;
 import com.agrowmart.repository.PaymentRepository;
@@ -34,6 +36,10 @@ public class RefundService {
 
     @Transactional
     public void initiateRefund(String orderId, User actor) {
+    	// 1. Auth check
+        if (actor == null) {
+            throw new AuthenticationFailedException("User must be authenticated to initiate refund");
+        }
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new RuntimeException("Order not found"));
         // Authorization: Only merchant or admin
@@ -42,13 +48,13 @@ public class RefundService {
             throw new RuntimeException("Not authorized to refund this order");
         }
         if (!"ONLINE".equals(order.getPaymentMode())) {
-            throw new IllegalStateException("Refund only allowed for ONLINE payments");
+            throw new BusinessValidationException("Refund only allowed for ONLINE payments");
         }
         if (!"SUCCESS".equals(order.getPaymentStatus())) {
-            throw new IllegalStateException("Cannot refund non-successful payment");
+            throw new BusinessValidationException("Cannot refund non-successful payment");
         }
         Payment payment = paymentRepository.findByOrderId(orderId)
-                .orElseThrow(() -> new RuntimeException("Payment record not found"));
+                .orElseThrow(() -> new BusinessValidationException("Payment record not found"));
         try {
             JSONObject refundRequest = new JSONObject();
             refundRequest.put("amount", (int) (order.getTotalPrice().doubleValue() * 100)); // full refund in paise
@@ -66,7 +72,7 @@ public class RefundService {
                     Map.of("type", "refund_initiated", "orderId", orderId)
             );
         } catch (RazorpayException e) {
-            throw new RuntimeException("Refund failed: " + e.getMessage());
+            throw new BusinessValidationException("Refund failed: " + e.getMessage());
         }
     }
 }

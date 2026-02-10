@@ -1,551 +1,3 @@
-//
-//package com.agrowmart.service;
-//
-//import com.agrowmart.dto.auth.order.*;
-//import com.agrowmart.entity.*;
-//import com.agrowmart.entity.order.Offer;
-//import com.agrowmart.entity.order.OfferUsage;
-//import com.agrowmart.entity.order.Order;
-//import com.agrowmart.entity.order.OrderItem;
-//import com.agrowmart.entity.order.OrderStatusHistory;
-//import com.agrowmart.enums.VendorAcceptThenCancelReason;
-//import com.agrowmart.enums.VendorCancelReason;
-//import com.agrowmart.exception.ForbiddenException;
-//import com.agrowmart.exception.ResourceNotFoundException;
-//import com.agrowmart.repository.*;
-//
-//import org.springframework.stereotype.Service;
-//import org.springframework.transaction.annotation.Transactional;
-//
-//import java.math.BigDecimal;
-//import java.math.RoundingMode;
-//import java.time.LocalDate;
-//import java.time.LocalDateTime;
-//import java.util.*;
-//
-//
-//
-//
-//
-//@Service
-//public class OrderServiceImpl implements OrderService {
-//
-//    private final OrderRepository orderRepository;
-//    private final OrderItemRepository orderItemRepository;
-//    private final OrderStatusHistoryRepository statusHistoryRepository;
-//    private final UserRepository userRepository;
-//    private final ProductRepository productRepository;
-//    private final VegetableDetailRepository vegetableDetailRepository;
-//    private final DairyDetailRepository dairyDetailRepository;
-//    private final MeatDetailRepository meatDetailRepository;
-//    private final WomenProductRepository womenProductRepository;
-//
-//    // NEW OFFER SYSTEM
-//    private final OfferRepository offerRepository;
-//    private final OfferUsageRepository offerUsageRepository;
-//    
-//    private final NotificationService NotificationService;
-//
-//    public OrderServiceImpl(
-//            OrderRepository orderRepository,
-//            OrderItemRepository orderItemRepository,
-//            OrderStatusHistoryRepository statusHistoryRepository,
-//            UserRepository userRepository,
-//            ProductRepository productRepository,
-//            VegetableDetailRepository vegetableDetailRepository,
-//            DairyDetailRepository dairyDetailRepository,
-//            MeatDetailRepository meatDetailRepository,
-//            WomenProductRepository womenProductRepository,
-//            OfferRepository offerRepository,
-//            OfferUsageRepository offerUsageRepository,
-//            NotificationService NotificationService
-//            
-//    ) {
-//        this.orderRepository = orderRepository;
-//        this.orderItemRepository = orderItemRepository;
-//        this.statusHistoryRepository = statusHistoryRepository;
-//        this.userRepository = userRepository;
-//        this.productRepository = productRepository;
-//        this.vegetableDetailRepository = vegetableDetailRepository;
-//        this.dairyDetailRepository = dairyDetailRepository;
-//        this.meatDetailRepository = meatDetailRepository;
-//        this.womenProductRepository = womenProductRepository;
-//        this.offerRepository = offerRepository;
-//        this.offerUsageRepository = offerUsageRepository;
-//        this.NotificationService=NotificationService;
-//    }
-//    
-//    
-//    @Override
-//    @Transactional
-//    public OrderResponseDTO createOrder(User customer, OrderRequestDTO request) {
-//        User merchant = userRepository.findById(request.merchantId())
-//                .orElseThrow(() -> new ResourceNotFoundException("Merchant not found"));
-//
-//        Order order = new Order();
-//        order.setCustomer(customer);
-//        order.setMerchant(merchant);
-//        order.setStatus(Order.OrderStatus.PENDING);
-//        order.setCreatedAt(LocalDateTime.now());
-//        order.setUpdatedAt(LocalDateTime.now());
-//
-//        BigDecimal subtotal = BigDecimal.ZERO;
-//        for (OrderItemRequestDTO item : request.items()) {
-//            Product product = productRepository.findById(item.productId())
-//                    .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
-//            
-//         // Changes StockQuantity - Ankita 
-//            
-//            // save updated stock
-//            // 🔥 STOCK VALIDATION
-//            if (product.getStockQuantity() < item.quantity()) {
-//                throw new IllegalStateException("Not enough stock for product: " + product.getProductName());
-//            }
-//            
-//            product.updateStock(item.quantity());  // reduce stock
-//            productRepository.save(product);       // save updated stock
-//            
-//            
-//            BigDecimal price = getProductPrice(product);
-//            BigDecimal itemTotal = price.multiply(BigDecimal.valueOf(item.quantity()));
-//
-//            OrderItem orderItem = new OrderItem();
-//            orderItem.setOrder(order);
-//            orderItem.setProduct(product);
-//            orderItem.setQuantity(item.quantity());
-//            orderItem.setPricePerUnit(price);
-//            orderItem.setTotalPrice(itemTotal);
-//            order.getItems().add(orderItem);
-//
-//            subtotal = subtotal.add(itemTotal);
-//        }
-//        order.setSubtotal(subtotal);
-//
-//        // Promo Code / Offer Logic
-//        BigDecimal discount = BigDecimal.ZERO;
-//        String appliedOfferCode = null;
-//        if (request.promoCode() != null && !request.promoCode().trim().isBlank()) {
-//            String code = request.promoCode().trim().toUpperCase();
-//            Offer offer = offerRepository.findActiveOfferByCodeAndMerchant(code, merchant.getId(), LocalDate.now())
-//                    .orElse(null);
-//            if (offer != null && isOfferApplicable(offer, customer, merchant, subtotal)) {
-//                discount = calculateDiscount(offer, subtotal);
-//                OfferUsage usage = new OfferUsage();
-//                usage.setCustomer(customer);
-//                usage.setOffer(offer);
-//                usage.setOrder(order);
-//                offerUsageRepository.save(usage);
-//                appliedOfferCode = offer.getCode();
-//            }
-//        }
-//
-//        order.setDiscountAmount(discount);
-//        order.setPromoCode(appliedOfferCode);
-//
-//        BigDecimal afterDiscount = subtotal.subtract(discount);
-//        BigDecimal deliveryCharge = afterDiscount.compareTo(BigDecimal.valueOf(100)) < 0
-//                ? BigDecimal.valueOf(25) : BigDecimal.ZERO;
-//
-//        order.setDeliveryCharge(deliveryCharge);
-//        order.setTotalPrice(afterDiscount.add(deliveryCharge));
-//
-//        order = orderRepository.save(order);
-//        addStatusHistory(order, "PENDING");
-//
-//        // NOTIFICATION → Vendor (New Order)
-//        NotificationService.sendNotification(
-//            merchant.getId(),
-//            "New Order Received",
-//            "Order #" + order.getId() + " | ₹" + order.getTotalPrice() + " from " + customer.getName(),
-//            Map.of("type", "new_order", "orderId", order.getId().toString())
-//        );
-//
-//        return mapToResponse(order);
-//    }
-//
-//
-//
-//	@Override
-//    @Transactional
-//    public OrderResponseDTO rejectOrder(String orderId, User vendor) {
-//        Order order = getOrderAndCheckOwnership(orderId, vendor);
-//
-//        order.setStatus(Order.OrderStatus.REJECTED);
-//        order.setUpdatedAt(LocalDateTime.now());
-//        orderRepository.save(order);
-//        addStatusHistory(order, "REJECTED");
-//
-//        // NOTIFICATION → Customer (Order Rejected)
-//        NotificationService.sendNotification(
-//            order.getCustomer().getId(),
-//            "Order Rejected",
-//            "Sorry, your Order #" + order.getId() + " was rejected.",
-//            Map.of("type", "order_rejected", "orderId", order.getId().toString())
-//        );
-//
-//        return mapToResponse(order);
-//    }
-//
-//    // Helper method – no duplicate code
-//    private Order getOrderAndCheckOwnership(String  orderId, User user) {
-//        Order order = orderRepository.findById(orderId)
-//                .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
-//        if (!order.getMerchant().getId().equals(user.getId())) {
-//            throw new ForbiddenException("Not authorized");
-//        }
-//        return order;
-//    }
-//    
-//
-////    @Override
-////    @Transactional
-////    public OrderResponseDTO createOrder(User customer, OrderRequestDTO request) {
-////        User merchant = userRepository.findById(request.merchantId())
-////                .orElseThrow(() -> new ResourceNotFoundException("Merchant not found"));
-////
-////        Order order = new Order();
-////        order.setCustomer(customer);
-////        order.setMerchant(merchant);
-////        order.setStatus(Order.OrderStatus.PENDING);
-////        order.setCreatedAt(LocalDateTime.now());
-////        order.setUpdatedAt(LocalDateTime.now());
-////
-////        BigDecimal subtotal = BigDecimal.ZERO;
-////
-////        for (OrderItemRequestDTO item : request.items()) {
-////            Product product = productRepository.findById(item.productId())
-////                    .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
-////
-////            BigDecimal price = getProductPrice(product);
-////            BigDecimal itemTotal = price.multiply(BigDecimal.valueOf(item.quantity()));
-////
-////            OrderItem orderItem = new OrderItem();
-////            orderItem.setOrder(order);
-////            orderItem.setProduct(product);
-////            orderItem.setQuantity(item.quantity());
-////            orderItem.setPricePerUnit(price);
-////            orderItem.setTotalPrice(itemTotal);
-////            order.getItems().add(orderItem);
-////
-////            subtotal = subtotal.add(itemTotal);
-////        }
-////
-////        order.setSubtotal(subtotal);
-////
-////        // FINAL WORKING OFFER LOGIC
-////        BigDecimal discount = BigDecimal.ZERO;
-////        String appliedOfferCode = null;
-////
-////        String inputCode = request.promoCode();
-////        if (inputCode != null && !inputCode.trim().isBlank()) {
-////            String cleanCode = inputCode.trim().toUpperCase();
-////
-////            Offer offer = offerRepository.findActiveOfferByCodeAndMerchant(
-////                    cleanCode, merchant.getId(), LocalDate.now()
-////            ).orElse(null);
-////
-////            if (offer != null && isOfferApplicable(offer, customer, merchant, subtotal)) {
-////                discount = calculateDiscount(offer, subtotal);
-////
-////                OfferUsage usage = new OfferUsage();
-////                usage.setCustomer(customer);
-////                usage.setOffer(offer);
-////                usage.setOrder(order);
-////                offerUsageRepository.save(usage);
-////
-////                appliedOfferCode = offer.getCode(); // "DIWALI50"
-////            }
-////        }
-////
-////        order.setDiscountAmount(discount);
-////        order.setPromoCode(appliedOfferCode); // SAVES THE CODE!
-////
-////        BigDecimal priceAfterDiscount = subtotal.subtract(discount);
-////        BigDecimal deliveryCharge = priceAfterDiscount.compareTo(BigDecimal.valueOf(100)) < 0
-////                ? BigDecimal.valueOf(25)
-////                : BigDecimal.ZERO;
-////
-////        order.setDeliveryCharge(deliveryCharge);
-////        order.setTotalPrice(priceAfterDiscount.add(deliveryCharge));
-////
-////        order = orderRepository.save(order);
-////        addStatusHistory(order, "PENDING");
-////
-////        return mapToResponse(order);
-////    }
-//
-//    private boolean isOfferApplicable(Offer offer, User customer, User merchant, BigDecimal subtotal) {
-//        if (subtotal.compareTo(offer.getMinOrderAmount()) < 0) return false;
-//        if (!offer.isActive()) return false;
-//
-//        LocalDate today = LocalDate.now();
-//        if (today.isBefore(offer.getStartDate()) || today.isAfter(offer.getEndDate())) return false;
-//
-//        if (offer.getCustomerGroup() == Offer.CustomerGroup.NEW_CUSTOMER) {
-//            return !orderRepository.existsByCustomerAndMerchant(customer, merchant);
-//        }
-//        if (offer.getCustomerGroup() == Offer.CustomerGroup.INACTIVE_30_DAYS) {
-//            LocalDateTime thirtyDaysAgo = LocalDateTime.now().minusDays(30);
-//            return !orderRepository.existsByCustomerAndMerchantAndCreatedAtAfter(customer, merchant, thirtyDaysAgo);
-//        }
-//        return true;
-//    }
-//
-//    private BigDecimal calculateDiscount(Offer offer, BigDecimal subtotal) {
-//        BigDecimal discount = BigDecimal.ZERO;
-//
-//        if (offer.getDiscountType() == Offer.DiscountType.PERCENTAGE && offer.getDiscountPercent() != null) {
-//            discount = subtotal.multiply(BigDecimal.valueOf(offer.getDiscountPercent()))
-//                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-//        } else if (offer.getDiscountType() == Offer.DiscountType.FLAT && offer.getFlatDiscount() != null) {
-//            discount = offer.getFlatDiscount();
-//        }
-//
-//        if (offer.getMaxDiscountAmount() != null && discount.compareTo(offer.getMaxDiscountAmount()) > 0) {
-//            discount = offer.getMaxDiscountAmount();
-//        }
-//        return discount;
-//    }
-//
-//    private BigDecimal getProductPrice(Product product) {
-//        String type = determineProductType(product.getCategory());
-//        return switch (type) {
-//            case "VEGETABLE" -> vegetableDetailRepository.findByProductId(product.getId())
-//                    .map(VegetableDetail::getMinPrice)
-//                    .orElseThrow(() -> new IllegalStateException("Price missing"));
-//            case "DAIRY" -> dairyDetailRepository.findByProductId(product.getId())
-//                    .map(DairyDetail::getMinPrice)
-//                    .orElseThrow(() -> new IllegalStateException("Price missing"));
-//            case "MEAT" -> meatDetailRepository.findByProductId(product.getId())
-//                    .map(MeatDetail::getMinPrice)
-//                    .orElseThrow(() -> new IllegalStateException("Price missing"));
-//            case "WOMEN" -> womenProductRepository.findById(product.getId())
-//                    .map(WomenProduct::getMinPrice)
-//                    .orElseThrow(() -> new IllegalStateException("Price missing"));
-//            default -> throw new IllegalArgumentException("Unsupported category");
-//        };
-//    }
-//
-//    private void addStatusHistory(Order order, String status) {
-//        OrderStatusHistory history = new OrderStatusHistory();
-//        history.setOrder(order);
-//        history.setStatus(status);
-//        statusHistoryRepository.save(history);
-//    }
-//
-//    @Override
-//    public List<OrderResponseDTO> getCustomerOrders(User customer) {
-//        return orderRepository.findByCustomer(customer)
-//                .stream()
-//                .map(this::mapToResponse)
-//                .toList();
-//    }
-//
-//    @Override
-//    public List<OrderResponseDTO> getVendorPendingOrders(User vendor) {
-//        return orderRepository.findByMerchantAndStatus(vendor, Order.OrderStatus.PENDING)
-//                .stream()
-//                .map(this::mapToResponse)
-//                .toList();
-//    }
-//    
-//  //------------
-//    //this is main code
-//
-////    @Override
-////    @Transactional
-////    public OrderResponseDTO acceptOrder(Long orderId, User vendor) {
-////        Order order = orderRepository.findById(orderId)
-////                .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
-////        if (!order.getMerchant().getId().equals(vendor.getId())) {
-////            throw new ForbiddenException("Not authorized");
-////        }
-////        order.setStatus(Order.OrderStatus.ACCEPTED);
-////        order.setUpdatedAt(LocalDateTime.now());
-////        orderRepository.save(order);
-////        addStatusHistory(order, "ACCEPTED");
-////        return mapToResponse(order);
-////    }
-////
-////    @Override
-////    @Transactional
-////    public OrderResponseDTO rejectOrder(Long orderId, User vendor) {
-////        Order order = orderRepository.findById(orderId)
-////                .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
-////        if (!order.getMerchant().getId().equals(vendor.getId())) {
-////            throw new ForbiddenException("Not authorized");
-////        }
-////        order.setStatus(Order.OrderStatus.REJECTED);
-////        order.setUpdatedAt(LocalDateTime.now());
-////        orderRepository.save(order);
-////        addStatusHistory(order, "REJECTED");
-////        return mapToResponse(order);
-////    }
-//
-//    private OrderResponseDTO mapToResponse(Order order) {
-//        var items = order.getItems().stream()
-//                .map(item -> new OrderItemResponseDTO(
-//                        item.getId(),
-//                        item.getProduct().getId(),
-//                        item.getQuantity(),
-//                        item.getPricePerUnit(),
-//                        item.getTotalPrice()
-//                ))
-//                .toList();
-//
-//        return new OrderResponseDTO(
-//                order.getId(),
-//                order.getCustomer().getId(),
-//                order.getMerchant().getId(),
-//                order.getSubtotal(),
-//                order.getDiscountAmount(),
-//                order.getDeliveryCharge(),
-//                order.getTotalPrice(),
-//                order.getPromoCode(), // "DIWALI50" or null — NEVER "null" string!
-//                order.getStatus().name(),
-//                order.getCreatedAt(),
-//                order.getUpdatedAt(),
-//                items,
-//                order.getCancelReason(),
-//                order.getCancelledBy(),
-//                order.getCancelledAt()
-//        );
-//    }
-//
-//    private String determineProductType(Category category) {
-//        if (category == null) return "GENERAL";
-//        Category root = category;
-//        while (root.getParent() != null) root = root.getParent();
-//        String name = root.getName().toLowerCase();
-//        if (name.contains("vegetable") || name.contains("fruit") || name.contains("fresh")) return "VEGETABLE";
-//        if (name.contains("dairy") || name.contains("milk")) return "DAIRY";
-//        if (name.contains("meat") || name.contains("chicken") || name.contains("fish") || name.contains("seafood")) return "MEAT";
-//        if (name.contains("women") || name.contains("handicraft")) return "WOMEN";
-//        return "GENERAL";
-//    }
-//    
-//
-//    
-//    
-//    @Override
-//    public List<OrderResponseDTO> getAllVendorOrders(User vendor) {
-//        return orderRepository.findByMerchantOrderByCreatedAtDesc(vendor)  // newest first
-//                .stream()
-//                .map(this::mapToResponse)
-//                .toList();
-//    }
-//
-//
-//	@Override
-//	public OrderResponseDTO markAsDelivered(Long orderId, User vendor) {
-//		// TODO Auto-generated method stub
-//		return null;
-//	}
-//
-//
-//	@Override
-//	public OrderResponseDTO confirmCodCollected(Long orderId, User vendor) {
-//		// TODO Auto-generated method stub
-//		return null;
-//	}
-//	@Override
-//	public OrderResponseDTO cancelOrderByCustomer(String orderId, String reason, User customer) {
-//		// TODO Auto-generated method stub
-//		return null;
-//	}
-//    
-//    
-//	@Override
-//	@Transactional
-//	public OrderResponseDTO cancelOrderByVendor(
-//	        String orderId,
-//	        User vendor,
-//	        String reason
-//	) {
-//	    Order order = orderRepository.findById(orderId)
-//	            .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
-//
-//	    // Vendor ownership check
-//	    if (!order.getMerchant().getId().equals(vendor.getId())) {
-//	        throw new ForbiddenException("Not allowed");
-//	    }
-//
-//	    // Already cancelled
-//	    if (order.getStatus() == Order.OrderStatus.CANCELLED) {
-//	        throw new IllegalStateException("Order already cancelled");
-//	    }
-//
-//	    // 🚨 Reason mandatory
-//	    if (reason == null || reason.trim().isEmpty()) {
-//	        throw new IllegalStateException("Cancellation reason is mandatory");
-//	    }
-//
-//	    // ✅ CASE 1: PENDING → CANCEL
-//	    if (order.getStatus() == Order.OrderStatus.PENDING) {
-//	        try {
-//	            VendorCancelReason cancelReason =
-//	                    VendorCancelReason.valueOf(reason);
-//
-//	            order.setVendorCancelReason(cancelReason);
-//
-//	        } catch (IllegalArgumentException e) {
-//	            throw new IllegalStateException("Invalid vendor cancellation reason");
-//	        }
-//	    }
-//
-//	    // ✅ CASE 2: ACCEPTED → CANCEL
-//	    else if (order.getStatus() == Order.OrderStatus.ACCEPTED) {
-//	        try {
-//	            VendorAcceptThenCancelReason cancelReason =
-//	                    VendorAcceptThenCancelReason.valueOf(reason);
-//
-//	            order.setVendorAcceptCancelReason(cancelReason);
-//
-//	        } catch (IllegalArgumentException e) {
-//	            throw new IllegalStateException("Invalid accept-then-cancel reason");
-//	        }
-//	    }
-//
-//	    else {
-//	        throw new IllegalStateException("Order cannot be cancelled in this state");
-//	    }
-//
-//	    order.setStatus(Order.OrderStatus.CANCELLED);
-//	    order.setCancelledBy("VENDOR");
-//	    order.setCancelledAt(LocalDateTime.now());
-//
-//	    orderRepository.save(order);
-//	    addStatusHistory(order, "CANCELLED");
-//
-//	    return mapToResponse(order);
-//	}
-//
-//
-//	@Override
-//	public OrderResponseDTO acceptOrder(Long orderId, User vendor) {
-//		// TODO Auto-generated method stub
-//		return null;
-//	}
-//
-//
-//	@Override
-//	public OrderResponseDTO rejectOrder(Long orderId, User vendor) {
-//		// TODO Auto-generated method stub
-//		return null;
-//	}
-//
-//
-//	@Override
-//	public OrderResponseDTO cancelOrderByCustomer(String orderId, User customer, String reason) {
-//		// TODO Auto-generated method stub
-//		return null;
-//	}
-//
-//
-//    
-//}
-
-
 
 package com.agrowmart.service;
 
@@ -559,13 +11,16 @@ import com.agrowmart.entity.order.*;
 import com.agrowmart.enums.DeliveryMode;
 import com.agrowmart.enums.VendorAcceptThenCancelReason;
 import com.agrowmart.enums.VendorCancelReason;
+import com.agrowmart.exception.AuthExceptions.AuthenticationFailedException;
+import com.agrowmart.exception.AuthExceptions.BusinessValidationException;
 import com.agrowmart.exception.ForbiddenException;
 import com.agrowmart.exception.ResourceNotFoundException;
 import com.agrowmart.repository.*;
 import com.agrowmart.entity.customer.Cart;
 import com.agrowmart.entity.customer.CartItem;
 import com.agrowmart.repository.customer.CartRepository;
-
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import org.hibernate.Hibernate;
 import org.springframework.stereotype.Service;
@@ -580,6 +35,9 @@ import java.util.stream.Collectors;
 @Service
 public class OrderServiceImpl implements OrderService {
 
+	private static final Logger log = LoggerFactory.getLogger(OrderServiceImpl.class);
+	
+	
     private final OrderWebSocketService orderWebSocketService;
     private final OrderRepository orderRepository;
     private final OrderItemRepository orderItemRepository;
@@ -785,15 +243,18 @@ public class OrderServiceImpl implements OrderService {
     @Transactional
     public OrderResponseDTO createOrder(Customer customer, OrderRequestDTO request) {
         // Validate common address
-        if (request.deliveryAddressId() == null) {
-            throw new IllegalArgumentException("Delivery address ID is required");
+    	if (customer == null) {
+            throw new AuthenticationFailedException("Customer must be authenticated");
         }
 
+        if (request.deliveryAddressId() == null) {
+            throw new BusinessValidationException("Delivery address ID is required");
+        }
         Hibernate.initialize(customer.getAddresses());
         CustomerAddress deliveryAddress = customer.getAddresses().stream()
                 .filter(addr -> addr.getId().equals(request.deliveryAddressId()))
                 .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException(
+                .orElseThrow(() -> new BusinessValidationException(
                         "Invalid delivery address ID: " + request.deliveryAddressId()
                 ));
 
@@ -814,7 +275,7 @@ public class OrderServiceImpl implements OrderService {
             createdOrder = allOrders.get(0);
         } 
         else {
-            throw new IllegalArgumentException("Either merchantId+items or vendorGroups must be provided");
+            throw new BusinessValidationException("Either merchantId+items or vendorGroups must be provided");
         }
 
         return mapToResponse(createdOrder);
@@ -902,59 +363,109 @@ public class OrderServiceImpl implements OrderService {
         
         //21 Jan 
      // Process items for this vendor
+//        for (OrderItemRequestDTO reqItem : items) {
+//
+//            Long productId = reqItem.productId();
+//
+//            BigDecimal price;
+//            double availableStock;
+//            String productType;
+//            
+//         // Try normal product
+//            Product normalProduct =
+//            	    productRepository
+//            	        .findByIdAndMerchantIdAndStatusAndApprovalStatus(
+//            	            productId,
+//            	            merchantId,
+//            	            ProductStatus.ACTIVE,
+//            	            ApprovalStatus.APPROVED
+//            	        )
+//            	        .orElse(null);
+//
+//            WomenProduct womenProduct = null;
+//            BaseAgriProduct agriProduct = null;
+//            if (normalProduct != null) {
+//
+//                // ✅ NORMAL PRODUCT (SAFE)
+//                productType = "NORMAL";
+//                price = getProductPrice(normalProduct);
+//                availableStock = normalProduct.getStockQuantity() != null
+//                        ? normalProduct.getStockQuantity()
+//                        : 0.0;
+//
+//            } else {
+//            	
+//            	// restore logic 
+//            	womenProduct =
+//            		    womenProductRepository
+//            		        .findByIdAndSeller_IdAndStatusAndApprovalStatus(
+//            		            productId,
+//            		            merchantId,
+//            		            ProductStatus.ACTIVE,
+//            		            ApprovalStatus.APPROVED
+//            		        )
+//            		        .orElseThrow(() ->
+//            		            new ForbiddenException(
+//            		                "Product is not approved / not active / deleted / does not belong to this merchant"
+//            		            )
+//            		        );
+//
+//              
+//                productType = "WOMEN";
+//                price = womenProduct.getMinPrice();
+//                availableStock = womenProduct.getStock() != null
+//                        ? womenProduct.getStock()
+//                        : 0;
+//            }
         for (OrderItemRequestDTO reqItem : items) {
-
             Long productId = reqItem.productId();
-
             BigDecimal price;
             double availableStock;
             String productType;
-            
-            //restore 
-            Product normalProduct =
-            	    productRepository
-            	        .findByIdAndMerchantIdAndStatusAndApprovalStatus(
-            	            productId,
-            	            merchantId,
-            	            ProductStatus.ACTIVE,
-            	            ApprovalStatus.APPROVED
-            	        )
-            	        .orElse(null);
+
+            // Try normal product
+            Product normalProduct = productRepository
+                    .findByIdAndMerchantIdAndStatusAndApprovalStatus(
+                            productId,
+                            merchantId,
+                            ProductStatus.ACTIVE,
+                            ApprovalStatus.APPROVED
+                    )
+                    .orElse(null);
 
             WomenProduct womenProduct = null;
+            BaseAgriProduct agriProduct = null;
 
             if (normalProduct != null) {
-
-                // ✅ NORMAL PRODUCT (SAFE)
                 productType = "NORMAL";
                 price = getProductPrice(normalProduct);
-                availableStock = normalProduct.getStockQuantity() != null
-                        ? normalProduct.getStockQuantity()
-                        : 0.0;
-
+                availableStock = normalProduct.getStockQuantity() != null ? normalProduct.getStockQuantity() : 0.0;
             } else {
-            	
-            	// restore logic 
-            	womenProduct =
-            		    womenProductRepository
-            		        .findByIdAndSeller_IdAndStatusAndApprovalStatus(
-            		            productId,
-            		            merchantId,
-            		            ProductStatus.ACTIVE,
-            		            ApprovalStatus.APPROVED
-            		        )
-            		        .orElseThrow(() ->
-            		            new ForbiddenException(
-            		                "Product is not approved / not active / deleted / does not belong to this merchant"
-            		            )
-            		        );
+                // Try women product
+                womenProduct = womenProductRepository
+                        .findByIdAndSeller_IdAndStatusAndApprovalStatus(
+                                productId,
+                                merchantId,
+                                ProductStatus.ACTIVE,
+                                ApprovalStatus.APPROVED
+                        )
+                        .orElse(null);
 
-              
-                productType = "WOMEN";
-                price = womenProduct.getMinPrice();
-                availableStock = womenProduct.getStock() != null
-                        ? womenProduct.getStock()
-                        : 0;
+                if (womenProduct != null) {
+                    productType = "WOMEN";
+                    price = womenProduct.getMinPrice();
+                    availableStock = womenProduct.getStock() != null ? womenProduct.getStock() : 0.0;
+                } else {
+                    // Try agri product
+                    agriProduct = agriProductRepository.findById(productId).orElse(null);
+                    if (agriProduct != null && agriProduct.getVendor().getId().equals(merchantId)) {
+                        productType = "AGRI";
+                        price = agriProduct.getAgriprice();
+                        availableStock = agriProduct.getAgriquantity() != null ? agriProduct.getAgriquantity() : 0.0;
+                    } else {
+                        throw new ResourceNotFoundException("Product not found or not approved/active for this merchant");
+                    }
+                }
             }
 
             // ✅ STOCK CHECK
@@ -962,7 +473,7 @@ public class OrderServiceImpl implements OrderService {
                 String name = normalProduct != null
                         ? normalProduct.getProductName()
                         : womenProduct.getName();
-                throw new IllegalStateException("Not enough stock for: " + name);
+                throw new BusinessValidationException("Not enough stock for: " + name);
             }
 
             BigDecimal itemTotal =
@@ -973,17 +484,32 @@ public class OrderServiceImpl implements OrderService {
             orderItem.setQuantity(reqItem.quantity());
             orderItem.setPricePerUnit(price);
             orderItem.setTotalPrice(itemTotal);
+//
+//            if ("NORMAL".equals(productType)) {
+//                orderItem.setProduct(normalProduct);
+//                normalProduct.updateStock(reqItem.quantity());
+//                productRepository.save(normalProduct);
+//            } else {
+//                orderItem.setWomenProduct(womenProduct);
+//                womenProduct.setStock(womenProduct.getStock() - reqItem.quantity());
+//                womenProductRepository.save(womenProduct);
+//            }
 
+         // Attach correct product & reduce stock
             if ("NORMAL".equals(productType)) {
                 orderItem.setProduct(normalProduct);
                 normalProduct.updateStock(reqItem.quantity());
                 productRepository.save(normalProduct);
-            } else {
+            } else if ("WOMEN".equals(productType)) {
                 orderItem.setWomenProduct(womenProduct);
                 womenProduct.setStock(womenProduct.getStock() - reqItem.quantity());
                 womenProductRepository.save(womenProduct);
+            } else if ("AGRI".equals(productType)) {
+                orderItem.setAgriProduct(agriProduct);
+                agriProduct.setAgriquantity(agriProduct.getAgriquantity() - reqItem.quantity());
+                agriProductRepository.save(agriProduct);
             }
-
+            
             order.getItems().add(orderItem);
             subtotal = subtotal.add(itemTotal);
         }
@@ -1001,7 +527,7 @@ public class OrderServiceImpl implements OrderService {
                     .orElse(null);
             if (offer != null && isOfferApplicable(offer, customer, merchant, subtotal)) {
                 if (offerUsageRepository.existsByCustomerAndOffer(customer, offer)) {
-                    throw new IllegalStateException("Coupon already used");
+                    throw new BusinessValidationException("Coupon already used");
                 }
                 discount = calculateDiscount(offer, subtotal);
                 appliedOfferCode = offer.getCode();
@@ -1044,16 +570,16 @@ public class OrderServiceImpl implements OrderService {
     public OrderResponseDTO createOrderFromCart(Customer customer, OrderRequestDTO request) {
 
         Cart cart = cartRepository.findByCustomer(customer)
-                .orElseThrow(() -> new IllegalStateException("Cart is empty"));
+                .orElseThrow(() -> new BusinessValidationException("Cart is empty"));
 
         if (cart.getItems().isEmpty()) {
-            throw new IllegalStateException("Cart has no items");
+            throw new BusinessValidationException("Cart has no items");
         }
 
         CustomerAddress deliveryAddress = customer.getAddresses().stream()
                 .filter(a -> a.getId().equals(request.deliveryAddressId()))
                 .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("Invalid delivery address"));
+                .orElseThrow(() -> new BusinessValidationException("Invalid delivery address"));
 
         Map<Long, List<CartItem>> itemsByVendor =
                 cart.getItems().stream()
@@ -1125,11 +651,11 @@ public class OrderServiceImpl implements OrderService {
                             .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
 
                     if (!product.getMerchantId().equals(merchantId)) {
-                        throw new IllegalStateException("Product does not belong to this merchant");
+                        throw new BusinessValidationException("Product does not belong to this merchant");
                     }
 
                     if (product.getStockQuantity() < qty) {
-                        throw new IllegalStateException("Insufficient stock");
+                        throw new BusinessValidationException("Insufficient stock");
                     }
 
                     product.setStockQuantity(product.getStockQuantity() - qty);
@@ -1143,11 +669,11 @@ public class OrderServiceImpl implements OrderService {
                             .orElseThrow(() -> new ResourceNotFoundException("Women product not found"));
 
                     if (!product.getSeller().getId().equals(merchantId)) {
-                        throw new IllegalStateException("Women product does not belong to this merchant");
+                        throw new BusinessValidationException("Women product does not belong to this merchant");
                     }
 
                     if (product.getStock() < qty) {
-                        throw new IllegalStateException("Insufficient stock");
+                        throw new BusinessValidationException("Insufficient stock");
                     }
 
                     product.setStock(product.getStock() - qty);
@@ -1163,13 +689,13 @@ public class OrderServiceImpl implements OrderService {
 
                     // ✅ vendor check (NOT merchant)
                     if (!product.getVendor().getId().equals(merchantId)) {
-                        throw new IllegalStateException("Agri product does not belong to this vendor");
+                        throw new BusinessValidationException("Agri product does not belong to this vendor");
                     }
 
                     Integer availableQty = product.getAgriquantity();
 
                     if (availableQty == null || availableQty < qty) {
-                        throw new IllegalStateException("Insufficient stock for agri product");
+                        throw new BusinessValidationException("Insufficient stock for agri product");
                     }
 
                     // ✅ reduce stock
@@ -1180,7 +706,7 @@ public class OrderServiceImpl implements OrderService {
                     orderItem.setAgriProduct(product);
                 }
 
-                default -> throw new IllegalArgumentException(
+                default -> throw new BusinessValidationException(
                         "Invalid product type: " + cartItem.getProductType()
                 );
             }
@@ -1227,7 +753,7 @@ public class OrderServiceImpl implements OrderService {
                     .orElseThrow(() ->
                             new ResourceNotFoundException("Agri product not found"));
 
-            default -> throw new IllegalArgumentException(
+            default -> throw new BusinessValidationException(
                     "Invalid product type: " + item.getProductType()
             );
         };
@@ -1245,7 +771,7 @@ public class OrderServiceImpl implements OrderService {
         Order order = getOrderAndCheckOwnership(orderId, vendor);
 
         if (order.getStatus() != Order.OrderStatus.ACCEPTED) {
-            throw new IllegalStateException("Order must be ACCEPTED before marking as ready");
+            throw new BusinessValidationException("Order must be ACCEPTED before marking as ready");
         }
 
         LocalDateTime now = LocalDateTime.now();
@@ -1320,13 +846,13 @@ public class OrderServiceImpl implements OrderService {
         if ("VENDOR_PICKUP".equals(type)) {
             // ─── Pickup Scan ───────────────────────────────────────────
             if (!providedToken.equals(order.getVendorPickupToken())) {
-                throw new IllegalArgumentException("Invalid pickup token");
+                throw new BusinessValidationException("Invalid pickup token");
             }
             if (LocalDateTime.now().isAfter(order.getVendorPickupTokenExpiry())) {
-                throw new IllegalArgumentException("Pickup token expired");
+                throw new BusinessValidationException("Pickup token expired");
             }
             if (order.getStatus() != Order.OrderStatus.READY_FOR_PICKUP) {
-                throw new IllegalStateException("Order not ready for pickup");
+                throw new BusinessValidationException("Order not ready for pickup");
             }
 
             order.setVendorPickupToken(null); // used
@@ -1402,7 +928,7 @@ public class OrderServiceImpl implements OrderService {
     public OrderResponseDTO acceptOrder(String orderId, User vendor) {
         Order order = getOrderAndCheckOwnership(orderId, vendor);
         if (order.getStatus() != Order.OrderStatus.PENDING && order.getStatus() != Order.OrderStatus.SCHEDULED) {
-            throw new IllegalStateException("Only PENDING or SCHEDULED orders can be accepted");
+            throw new BusinessValidationException("Only PENDING or SCHEDULED orders can be accepted");
         }
         order.setStatus(Order.OrderStatus.ACCEPTED);
         order.setUpdatedAt(LocalDateTime.now());
@@ -1517,7 +1043,7 @@ public class OrderServiceImpl implements OrderService {
     public OrderResponseDTO markAsDelivered(String orderId, User vendor) {
         Order order = getOrderAndCheckOwnership(orderId, vendor);
         if (order.getStatus() != Order.OrderStatus.ACCEPTED) {
-            throw new IllegalStateException("Order must be accepted first");
+            throw new BusinessValidationException("Order must be accepted first");
         }
         order.setStatus(Order.OrderStatus.DELIVERED);
         order.setDeliveredAt(LocalDateTime.now());
@@ -1589,16 +1115,16 @@ public class OrderServiceImpl implements OrderService {
     public OrderResponseDTO cancelOrderByVendor(String orderId, User vendor, String reason) {
         Order order = getOrderAndCheckOwnership(orderId, vendor);
         if (order.getStatus() == Order.OrderStatus.CANCELLED) {
-            throw new IllegalStateException("Order already cancelled");
+            throw new BusinessValidationException("Order already cancelled");
         }
         if (reason == null || reason.trim().isEmpty()) {
-            throw new IllegalStateException("Cancellation reason required");
+            throw new BusinessValidationException("Cancellation reason required");
         }
         if (order.getStatus() == Order.OrderStatus.PENDING) {
             try {
                 order.setVendorCancelReason(VendorCancelReason.valueOf(reason));
-            } catch (IllegalArgumentException e) {
-                throw new IllegalStateException("Invalid reason for pending order");
+            } catch (BusinessValidationException e) {
+                throw new BusinessValidationException("Invalid reason for pending order");
             }
         } else if (order.getStatus() == Order.OrderStatus.ACCEPTED) {
             try {
@@ -1692,18 +1218,18 @@ public class OrderServiceImpl implements OrderService {
         return switch (type) {
             case "VEGETABLE" -> vegetableDetailRepository.findByProductId(product.getId())
                     .map(VegetableDetail::getMinPrice)
-                    .orElseThrow(() -> new IllegalStateException("Price missing"));
+                    .orElseThrow(() -> new BusinessValidationException("Price missing"));
             case "DAIRY" -> dairyDetailRepository.findByProductId(product.getId())
                     .map(DairyDetail::getMinPrice)
-                    .orElseThrow(() -> new IllegalStateException("Price missing"));
+                    .orElseThrow(() -> new BusinessValidationException("Price missing"));
             case "MEAT" -> meatDetailRepository.findByProductId(product.getId())
                     .map(MeatDetail::getMinPrice)
-                    .orElseThrow(() -> new IllegalStateException("Price missing"));
+                    .orElseThrow(() -> new BusinessValidationException("Price missing"));
             case "WOMEN"      -> womenProductRepository.findById(product.getId())   // ← This line
             .map(WomenProduct::getMinPrice)
             
            
-                    .orElseThrow(() -> new IllegalStateException("Price missing"));
+                    .orElseThrow(() -> new BusinessValidationException("Price missing"));
             default -> throw new IllegalArgumentException("Unsupported category");
         };
     }
@@ -1764,12 +1290,12 @@ public class OrderServiceImpl implements OrderService {
 
         // 2. Must be in READY_FOR_PICKUP status
         if (order.getStatus() != Order.OrderStatus.READY_FOR_PICKUP) {
-            throw new IllegalStateException("Order must be in READY_FOR_PICKUP status to generate pickup QR");
+            throw new BusinessValidationException("Order must be in READY_FOR_PICKUP status to generate pickup QR");
         }
 
         // 3. Only allowed for DELIVERY_PARTNER mode
         if (order.getDeliveryMode() != DeliveryMode.DELIVERY_PARTNER) {
-            throw new IllegalStateException("Pickup QR can only be generated for DELIVERY_PARTNER delivery mode");
+            throw new BusinessValidationException("Pickup QR can only be generated for DELIVERY_PARTNER delivery mode");
         }
 
         // 4. Generate new token if:

@@ -5,6 +5,7 @@ import jakarta.persistence.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
+import com.agrowmart.admin_seller_management.entity.Admin;
 import com.agrowmart.admin_seller_management.enums.AccountStatus;
 import com.agrowmart.admin_seller_management.enums.DocumentStatus;
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -348,10 +349,15 @@ public class User {
 
 	
 	//Added by Aakanksha - 13/01/2026
-		@Column(name = "account_status",
-		        columnDefinition = "ENUM('PENDING','APPROVED','REJECTED','BLOCKED') DEFAULT 'PENDING'")
-		@Enumerated(EnumType.STRING)
-		private AccountStatus accountStatus;
+
+		
+		 // Option A – best long-term
+	    @Enumerated(EnumType.STRING)
+	    @Column(name = "account_status", 
+	            nullable = false, 
+	            columnDefinition = "ENUM('PENDING','APPROVED','REJECTED','BLOCKED') DEFAULT 'PENDING'")
+	    private AccountStatus accountStatus = AccountStatus.PENDING;
+
 
 		public AccountStatus getAccountStatus() {
 		    return accountStatus;
@@ -508,5 +514,49 @@ public class User {
         this.deletedAt = null;
         this.deletedBy = null;
     }
+    
+ // In User.java - add new field
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "deleted_by_admin_id")
+    private Admin deletedByAdmin;
 
+    // New helper method
+    public void markAsDeletedByAdmin(Admin deletedBy) {
+        this.deleted = true;
+        this.deletedAt = LocalDateTime.now();
+        this.deletedByAdmin = deletedBy;
+        // Optionally keep deletedBy = null
+    }
+
+	public Admin getDeletedByAdmin() {
+		return deletedByAdmin;
+	}
+
+	public void setDeletedByAdmin(Admin deletedByAdmin) {
+		this.deletedByAdmin = deletedByAdmin;
+	}
+	// In User.java (add these two fields)
+
+    @Column(name = "kyc_consent_given", nullable = false, columnDefinition = "boolean default false")
+    private boolean kycConsentGiven = false;
+
+    @Column(name = "kyc_consent_given_at")
+    private LocalDateTime kycConsentGivenAt;
+
+    // Getters & Setters
+    public boolean isKycConsentGiven() {
+        return kycConsentGiven;
+    }
+
+    public void setKycConsentGiven(boolean kycConsentGiven) {
+        this.kycConsentGiven = kycConsentGiven;
+    }
+
+    public LocalDateTime getKycConsentGivenAt() {
+        return kycConsentGivenAt;
+    }
+
+    public void setKycConsentGivenAt(LocalDateTime kycConsentGivenAt) {
+        this.kycConsentGivenAt = kycConsentGivenAt;
+    }
 }

@@ -8,6 +8,8 @@ import com.agrowmart.entity.User;
 import com.agrowmart.enums.OtpPurpose;
 import com.agrowmart.service.AuthService;
 import jakarta.validation.Valid;
+
+import org.apache.tomcat.util.http.fileupload.FileUploadException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -85,7 +87,7 @@ public class FarmerController {
     @PostMapping(value = "/upload-photo", consumes = "multipart/form-data")
     public ResponseEntity<String> uploadPhoto(
     		@RequestParam("photo") MultipartFile photo ,  // ← Frontend must send key = "photo"
-            @AuthenticationPrincipal User farmer) {
+            @AuthenticationPrincipal User farmer) throws FileUploadException {
         if (farmer == null || !"FARMER".equals(farmer.getRole().getName())) {
             return ResponseEntity.status(403).body("Forbidden");
         }

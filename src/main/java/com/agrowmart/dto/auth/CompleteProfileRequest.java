@@ -35,6 +35,7 @@ public record CompleteProfileRequest(
  MultipartFile aadhaarImage,
  MultipartFile panImage,
  MultipartFile udyamRegistrationImage,
+ Boolean kycConsentGiven,
  
  
  

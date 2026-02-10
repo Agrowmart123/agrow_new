@@ -5,6 +5,8 @@ import com.agrowmart.entity.VendorPaymentDetails;
 import com.agrowmart.entity.order.Order;
 import com.agrowmart.entity.order.Payment;
 import com.agrowmart.entity.order.Settlement;
+import com.agrowmart.exception.AuthExceptions.AuthenticationFailedException;
+import com.agrowmart.exception.AuthExceptions.BusinessValidationException;
 import com.agrowmart.repository.OrderRepository;
 import com.agrowmart.repository.PaymentRepository;
 import com.agrowmart.repository.SettlementRepository;
@@ -187,6 +189,9 @@ public class RazorpayService {
 
     @Transactional
     public void onboardVendor(User vendor) throws Exception {
+    	if (vendor == null) {
+            throw new AuthenticationFailedException("Vendor must be authenticated");
+        }
         log.info("Onboarding vendor: {}", vendor.getId());
 
         VendorPaymentDetails details = vendorPaymentDetailsRepository.findByUser(vendor)
@@ -240,13 +245,22 @@ public class RazorpayService {
             vendorPaymentDetailsRepository.save(details);
             log.info("Vendor onboarded successfully");
         } catch (Exception e) {
-            log.error("Onboarding failed: {}", e.getMessage());
-            throw e;
+            log.error("Vendor onboarding failed for vendor ID {}: {}", vendor.getId(), e.getMessage(), e);
+            throw new BusinessValidationException("Failed to onboard vendor with Razorpay: " + e.getMessage());
+        
         }
     }
 
     public String createPayout(String fundAccountId, double amountInRupees, String orderId) throws Exception {
-        log.info("Creating payout: ₹{} for order {}", amountInRupees, orderId);
+        
+    	if (fundAccountId == null || fundAccountId.isEmpty()) {
+            throw new BusinessValidationException("Fund account ID is required for payout");
+        }
+
+        if (amountInRupees <= 0) {
+            throw new BusinessValidationException("Payout amount must be greater than zero");
+        }
+    	log.info("Creating payout: ₹{} for order {}", amountInRupees, orderId);
 
         JSONObject req = new JSONObject();
         req.put("account_number", razorpayxAccountNumber);

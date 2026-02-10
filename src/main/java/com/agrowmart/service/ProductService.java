@@ -2,11 +2,17 @@ package com.agrowmart.service;
 
 import com.agrowmart.dto.auth.product.*;
 import com.agrowmart.dto.auth.shop.ShopSummaryDTO;
+import com.agrowmart.dto.auth.shop.WorkingHourDTO;
 import com.agrowmart.entity.*;
 import com.agrowmart.entity.Product.ProductStatus;
+import com.agrowmart.exception.AuthExceptions.BusinessValidationException;
+import com.agrowmart.exception.AuthExceptions.FileUploadException;
 import com.agrowmart.exception.ForbiddenException;
 import com.agrowmart.exception.ResourceNotFoundException;
 import com.agrowmart.repository.*;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.springframework.data.domain.*;
 import org.springframework.data.jpa.domain.Specification;
@@ -16,13 +22,18 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeParseException;
 import java.util.*;
 import java.util.stream.Collectors;
-
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 @Service
 @Transactional
 public class ProductService {
-
+	private static final Logger log = LoggerFactory.getLogger(ProductService.class);
     private final ProductRepository productRepo;
     private final CategoryRepository categoryRepo;
     
@@ -68,11 +79,11 @@ this.userRepo=userRepo;
             .orElseThrow(() -> new ResourceNotFoundException("Vendor not found"));
 
         if (!"ONLINE".equalsIgnoreCase(vendor.getOnlineStatus())) {
-            throw new ForbiddenException("You must be ONLINE to add, update or delete products. Update your status first.");
+            throw new BusinessValidationException("You must be ONLINE to add, update or delete products. Update your status first.");
         }
 
         if (!"YES".equals(vendor.getProfileCompleted())) {
-            throw new ForbiddenException("Please complete your profile 100% before managing products.");
+            throw new BusinessValidationException("Please complete your profile 100% before managing products.");
         }
     }
     
@@ -83,7 +94,9 @@ this.userRepo=userRepo;
 
     	validateVendorCanModify(merchantId);
     	
-    	
+    	if (dto == null || dto.categoryId() == null) {
+            throw new BusinessValidationException("Category is required");
+        }
     	// After fetching category
     	Category category = categoryRepo.findById(dto.categoryId())
     	        .orElseThrow(() -> new ResourceNotFoundException("Category not found"));
@@ -125,14 +138,24 @@ this.userRepo=userRepo;
      // 9️⃣ Seller → Shop
         User seller = userRepo.findById(merchantId).orElse(null);
         Shop shop = seller != null ? seller.getShop() : null;
+     // Build shop DTO safely
+        ShopSummaryDTO shopDTO = null;
 
-        ShopSummaryDTO shopDTO = (shop == null) ? null : new ShopSummaryDTO(
-                shop.getId(),
-                shop.getShopName(),
-                shop.getShopPhoto(),
-                shop.getShopAddress(),
-                shop.getShopType()
-        );
+        if (shop != null) {
+        	 Boolean open = isShopOpenFromWorkingHours(shop);
+
+            shopDTO = new ShopSummaryDTO(
+                    shop.getId(),                          // Long
+                    shop.getShopName(),                    // String
+                    shop.getShopPhoto(),                   // String
+                    shop.getShopAddress(),                 // String
+                    shop.getShopType(),                    // String
+                    extractCity(shop.getShopAddress()),    // String
+                    extractPincode(shop.getShopAddress()), // String
+                    0.0,                                   // Double rating
+                    open                                   // Boolean open
+            );
+        }
 
         // 🔟 Final response
         return new ProductResponseDTO(
@@ -303,7 +326,7 @@ this.userRepo=userRepo;
                     try {
                         return cloudinary.upload(file);
                     } catch (Exception e) {
-                        throw new RuntimeException("Image upload failed: " + e.getMessage(), e);
+                        throw new FileUploadException("Image upload failed: " + e.getMessage(), e);
                     }
                 })
                 .toList();
@@ -370,23 +393,39 @@ this.userRepo=userRepo;
     }
 
  // ===================== MAPPER (🔥 SINGLE SOURCE OF TRUTH 🔥) =====================
+ // ===================== MAPPER (🔥 SINGLE SOURCE OF TRUTH 🔥) =====================
     public ProductResponseDTO toResponseDto(Product p) {
 
         List<String> images = getImageList(p.getImagePaths());
         String type = determineProductType(p.getCategory());
         Object details = fetchDetailsEntity(p.getId(), type);
 
-        User seller = userRepo.findById(p.getMerchantId()).orElse(null);
+        User seller = p.getMerchantId() != null
+                ? userRepo.findById(p.getMerchantId()).orElse(null)
+                : null;
+
         Shop shop = seller != null ? seller.getShop() : null;
 
-        ShopSummaryDTO shopDTO = shop == null ? null : new ShopSummaryDTO(
-                shop.getId(),
-                shop.getShopName(),
-                shop.getShopPhoto(),
-                shop.getShopAddress(),
-                shop.getShopType()
-        );
+     // Build shop DTO safely
+        ShopSummaryDTO shopDTO = null;
 
+        if (shop != null) {
+        	 Boolean open = isShopOpenFromWorkingHours(shop);
+
+            shopDTO = new ShopSummaryDTO(
+                    shop.getId(),                          // Long
+                    shop.getShopName(),                    // String
+                    shop.getShopPhoto(),                   // String
+                    shop.getShopAddress(),                 // String
+                    shop.getShopType(),                    // String
+                    extractCity(shop.getShopAddress()),    // String
+                    extractPincode(shop.getShopAddress()), // String
+                    0.0,                                   // Double rating
+                    open                                   // Boolean open
+            );
+        }
+
+        // 🔟 Final response
         return new ProductResponseDTO(
                 p.getId(),
                 p.getProductName(),
@@ -403,7 +442,6 @@ this.userRepo=userRepo;
                 shopDTO
         );
     }
-
     
     public List<ProductResponseDTO> getVendorProducts(Long merchantId) {
         return productRepo.findByMerchantId(merchantId)
@@ -627,7 +665,7 @@ this.userRepo=userRepo;
         try {
             newStatus = ProductStatus.valueOf(newStatusStr);
         } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Invalid status: must be ACTIVE or INACTIVE");
+            throw new BusinessValidationException("Invalid status: must be ACTIVE or INACTIVE");
         }
 
         // Always update even if same (idempotent)
@@ -724,4 +762,123 @@ this.userRepo=userRepo;
         }
         
     }
+    
+    
+    
+    private boolean isShopOpen(LocalTime opensAt, LocalTime closesAt) {
+
+	    if (opensAt == null || closesAt == null) {
+	        return false;
+	    }
+
+	    LocalTime now = LocalTime.now(ZoneId.of("Asia/Kolkata"));
+
+	    // Normal same-day shop (09:00 → 18:00)
+	    if (closesAt.isAfter(opensAt)) {
+	        return !now.isBefore(opensAt) && !now.isAfter(closesAt);
+	    }
+
+	    // Overnight shop (20:00 → 02:00)
+	    return !now.isBefore(opensAt) || !now.isAfter(closesAt);
+	}
+
+
+   // ===================== ADDRESS HELPERS =====================
+   private String extractCity(String address) {
+       if (address == null || address.isBlank()) return null;
+       return address;
+   }
+
+   private String extractPincode(String address) {
+       return null;
+   }
+
+   private Boolean isShopOpenFromWorkingHours(Shop shop) {
+       if (shop == null || shop.getWorkingHoursJson() == null || shop.getWorkingHoursJson().trim().isEmpty()) {
+    	   log.warn("Shop {} has no working hours JSON", shop != null ? shop.getId() : "null");
+           return false;
+       }
+
+       try {
+           ObjectMapper mapper = new ObjectMapper();
+           List<WorkingHourDTO> hours = mapper.readValue(
+                   shop.getWorkingHoursJson(),
+                   new TypeReference<List<WorkingHourDTO>>() {}
+           );
+
+           if (hours.isEmpty()) {
+               System.out.println("Shop " + shop.getId() + " has empty working hours list");
+               return false;
+           }
+
+           String today = LocalDate.now(ZoneId.of("Asia/Kolkata"))
+                   .getDayOfWeek()
+                   .name();  // MONDAY, TUESDAY, ...
+
+           LocalTime now = LocalTime.now(ZoneId.of("Asia/Kolkata"));
+
+           // Debug info (you can switch to proper logger later)
+           System.out.println("Shop ID: " + shop.getId() +
+                   " | Today: " + today +
+                   " | Current time: " + now);
+
+           System.out.println("Working hours JSON: " + shop.getWorkingHoursJson());
+
+           for (WorkingHourDTO h : hours) {
+               String storedDay = h.getDay();
+               if (storedDay == null || storedDay.trim().isEmpty()) {
+                   continue;
+               }
+
+               String normalizedDay = storedDay.trim().toUpperCase();
+
+               System.out.println("  Checking day: " + storedDay + " → normalized: " + normalizedDay);
+
+               if (today.equals(normalizedDay)) {
+                   String openStr = h.getOpen();
+                   String closeStr = h.getClose();
+
+                   if (openStr == null || closeStr == null || openStr.trim().isEmpty() || closeStr.trim().isEmpty()) {
+                       System.out.println("  Invalid time format for " + normalizedDay);
+                       continue;
+                   }
+
+                   LocalTime openTime = LocalTime.parse(openStr.trim());
+                   LocalTime closeTime = LocalTime.parse(closeStr.trim());
+
+                   System.out.println("  → Found matching day: " + normalizedDay +
+                           " | Open: " + openTime +
+                           " | Close: " + closeTime +
+                           " | Now: " + now);
+
+                   // Normal opening hours (open < close)
+                   if (closeTime.isAfter(openTime)) {
+                       boolean isOpen = !now.isBefore(openTime) && !now.isAfter(closeTime);
+                       System.out.println("  → Normal hours → isOpen = " + isOpen);
+                       return isOpen;
+                   }
+                   // Overnight hours (e.g. 22:00 – 06:00)
+                   else {
+                       boolean isOpen = !now.isBefore(openTime) || !now.isAfter(closeTime);
+                       System.out.println("  → Overnight hours → isOpen = " + isOpen);
+                       return isOpen;
+                   }
+               }
+           }
+
+           System.out.println("No matching day found for shop " + shop.getId() + " (today is " + today + ")");
+           return false;
+
+       } catch (JsonProcessingException e) {
+           System.err.println("Invalid JSON format for shop " + shop.getId() + ": " + e.getMessage());
+           return false;
+       } catch (DateTimeParseException e) {
+           System.err.println("Time parsing error for shop " + shop.getId() + ": " + e.getMessage());
+           return false;
+       } catch (Exception e) {
+           System.err.println("Unexpected error checking shop " + shop.getId() + ": " + e.getMessage());
+           e.printStackTrace();
+           return false;
+       }
+   }
 }
