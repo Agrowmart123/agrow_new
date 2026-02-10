@@ -1,11 +1,14 @@
 package com.agrowmart.controller;
 
+
 import com.agrowmart.admin_seller_management.enums.AccountStatus;
 import com.agrowmart.dto.auth.*;
 import com.agrowmart.dto.auth.shop.ShopRequest;
 import com.agrowmart.entity.Shop;
 import com.agrowmart.entity.User;
 import com.agrowmart.exception.AuthExceptions.AuthenticationFailedException;
+import com.agrowmart.exception.AuthExceptions.BusinessValidationException;
+import com.agrowmart.repository.UserRepository;
 import com.agrowmart.service.AuthService;
 import com.agrowmart.service.ShopService;
 
@@ -551,6 +554,32 @@ public class AuthController {
         
     }
 
+       // ──────────────────────────────────────────────
+     // Change Password (authenticated user only)
+     // ──────────────────────────────────────────────
+        @PutMapping("/change-password")
+        public ResponseEntity<?> changePassword(
+                @Valid @RequestBody ChangePasswordRequest req,
+                @AuthenticationPrincipal User currentUser) {
+
+            if (currentUser == null) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Please login first");
+            }
+
+            try {
+                authService.changePassword(req, currentUser);
+                return ResponseEntity.ok(Map.of(
+                    "message", "Password changed successfully",
+                    "status", "success"
+                ));
+            } catch (BusinessValidationException e) {
+                return ResponseEntity.badRequest().body(e.getMessage());
+            } catch (Exception e) {
+                log.error("Password change failed", e);
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                        .body("Something went wrong. Please try again later.");
+            }
+        }
     
     
     
