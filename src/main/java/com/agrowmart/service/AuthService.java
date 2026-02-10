@@ -640,6 +640,27 @@ if (!encoder.matches(req.password(), user.getPasswordHash())) {
         );
     }
 
-    
+      @Transactional
+    public void changePassword(ChangePasswordRequest req, User user) {
+        // 1. Verify old password
+        if (!encoder.matches(req.oldPassword(), user.getPasswordHash())) {
+            throw new BusinessValidationException("Current password is incorrect");
+        }
+
+        // 2. Check new password matches confirm
+        if (!req.newPassword().equals(req.confirmNewPassword())) {
+            throw new BusinessValidationException("New password and confirm password do not match");
+        }
+
+        // 3. Encode and save NEW password
+        String newEncodedPassword = encoder.encode(req.newPassword());
+        user.setPasswordHash(newEncodedPassword);
+
+        // 4. Very important - SAVE to database!
+        userRepo.save(user);
+        
+        // Optional: log success
+        System.out.println("Password changed for user: " + user.getPhone());
+    }
 
 }
